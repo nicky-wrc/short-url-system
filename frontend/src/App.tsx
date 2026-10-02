@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLeft, ChevronRight, Copy, ExternalLink, Globe2, Link2, Loader2, Plus, QrCode, Search, Sparkles, X } from 'lucide-react';
-import { api, type Link, type LinkPage, type Stats } from './api';
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLeft, ChevronRight, Copy, Eye, ExternalLink, Globe2, Link2, Loader2, Plus, QrCode, Search, Sparkles, X } from 'lucide-react';
+import { api, type Link, type LinkPage, type Stats, type User, clearAuthToken } from './api';
+import { formatExpiry, localTimeZone } from './time';
+type ExpiryPreset = 'none' | '1h' | '1d' | '7d' | 'custom';
 
 const formatNumber = (n: number) => new Intl.NumberFormat('en').format(n);
 const formatDate = (date: string) => new Date(date).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
 const expired = (link: Link) => !!link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now();
 
 
-export function App() {
+export function App({ user, onLogout, loggingOut }: { user: User; onLogout: () => void; loggingOut: boolean }) {
   const [view, setView] = useState<'overview' | 'links'>('overview');
   const [links, setLinks] = useState<LinkPage | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -20,6 +22,7 @@ export function App() {
   const [title, setTitle] = useState('');
   const [alias, setAlias] = useState('');
   const [expiry, setExpiry] = useState('');
+  const [expiryPreset, setExpiryPreset] = useState<ExpiryPreset>('none');
   const [advanced, setAdvanced] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -28,6 +31,9 @@ export function App() {
   const [qrError, setQrError] = useState(false);
   const [copied, setCopied] = useState('');
   const [notice, setNotice] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exportLock = useRef(false);
   const urlInput = useRef<HTMLInputElement>(null);
   const modal = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -80,15 +86,41 @@ export function App() {
   async function create(e: FormEvent) {
     e.preventDefault(); setCreating(true); setCreateError('');
     try {
+      if (expiryPreset === 'custom' && (!expiry || !Number.isFinite(new Date(expiry).getTime()) || new Date(expiry).getTime() <= Date.now())) throw new Error('Choose a future date and time for custom expiry.');
       const link = await api<Link>('/links', { method: 'POST', body: JSON.stringify({
         originalUrl: url, title, ...(alias.trim() ? { customAlias: alias.trim() } : {}),
-        ...(expiry ? { expiresAt: new Date(expiry).toISOString() } : {}),
+        expiryPreset, ...(expiryPreset === 'custom' ? { expiresAt: new Date(expiry).toISOString() } : {}),
       }) });
-      setCreated(link); setUrl(''); setTitle(''); setAlias(''); setExpiry(''); setPage(1);
+      setCreated(link); setUrl(''); setTitle(''); setAlias(''); setExpiry(''); setExpiryPreset('none'); setPage(1);
       if (page === 1) await refresh(true);
       setNotice('Your short link is ready to share.');
     } catch (error) { setCreateError((error as Error).message); }
     finally { setCreating(false); }
+  }
+  async function downloadCsv() {
+    if (exportLock.current) return;
+    exportLock.current = true; setExporting(true); setExportError('');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(`/api/links/export.csv?q=${encodeURIComponent(debouncedSearch)}`, { signal: controller.signal });
+      if (!response.ok) {
+        if (response.status === 401) { clearAuthToken(); window.dispatchEvent(new Event('auth-required')); }
+        const body = await response.json().catch(() => null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'CSV download failed. Please try again.');
+      }
+      if (!response.headers.get('content-type')?.startsWith('text/csv')) throw new Error('CSV download failed. Please try again.');
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = response.headers.get('content-disposition')?.match(/filename="(my-links-\d{4}-\d{2}-\d{2}\.csv)"/)?.[1] ?? 'shared-links.csv';
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      setNotice('My links CSV download started. Empty results contain headers only.');
+    } catch (error) {
+      setExportError((error as Error).name === 'AbortError' ? 'CSV download timed out. Narrow your search or try again.' : (error as Error).message);
+    } finally { clearTimeout(timer); exportLock.current = false; setExporting(false); }
   }
   function focusCreate() { document.getElementById('create-link')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); urlInput.current?.focus({ preventScroll: true }); }
   const totalPages = Math.max(1, Math.ceil((links?.total ?? 0) / 6));
@@ -97,18 +129,18 @@ export function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <a href="/" className="brand" aria-label="Link Studio home"><span className="brand-icon"><Link2 size={23} /></span><span>link<span className="brand-light">studio</span><span className="brand-dot">.</span></span></a>
-      <div className="workspace"><span className="workspace-avatar">S</span><div><strong>SYNERRY workspace</strong><small>Co-op developer project</small></div><span className="workspace-dot" /></div>
+      <div className="workspace"><span className="workspace-avatar">S</span><div><strong>My workspace</strong><small>Co-op developer project</small></div><span className="workspace-dot" /></div>
       <p className="nav-label">WORKSPACE</p>
       <nav aria-label="Main navigation">
         <button className={view === 'overview' ? 'nav-item active' : 'nav-item'} onClick={() => setView('overview')}><BarChart3 size={19} />Overview</button>
-        <button className={view === 'links' ? 'nav-item active' : 'nav-item'} onClick={() => { setView('links'); document.getElementById('link-history')?.scrollIntoView({ behavior: 'smooth' }); }}><Link2 size={19} />All links<span className="nav-count">{stats?.totalLinks ?? '—'}</span></button>
+        <button className={view === 'links' ? 'nav-item active' : 'nav-item'} onClick={() => { setView('links'); document.getElementById('link-history')?.scrollIntoView({ behavior: 'smooth' }); }}><Link2 size={19} />My links<span className="nav-count">{stats?.totalLinks ?? '—'}</span></button>
       </nav>
       <div className="sidebar-note"><span className="note-icon"><Sparkles size={19} /></span><h3>Small links.<br />Bigger possibilities.</h3><p>One place to create, share,<br />and track every connection.</p><button onClick={focusCreate}>Create a link <ArrowUpRight size={16} /></button></div>
       <div className="sidebar-footer"><span className="footer-mark">SYNERRY<span>+</span></span><p>Built for meaningful connections.</p><span className="version">FULL-STACK CHALLENGE · V1.0</span></div>
     </aside>
 
     <div className="main-wrapper">
-      <header className="topbar"><div className="breadcrumb">Workspace <ChevronRight size={14} /><strong>{view === 'overview' ? 'Overview' : 'All links'}</strong></div><div className="topbar-right"><span className={`service-status ${loadError ? 'offline' : ''}`}><span />{loading && !stats ? 'Connecting' : loadError ? 'Connection issue' : 'API connected'}</span><span className="profile">S</span></div></header>
+      <header className="topbar"><div className="breadcrumb">Workspace <ChevronRight size={14} /><strong>{view === 'overview' ? 'Overview' : 'All links'}</strong></div><div className="topbar-right"><span className={`service-status ${loadError ? 'offline' : ''}`}><span />{loading && !stats ? 'Connecting' : loadError ? 'Connection issue' : 'API connected'}</span><span className="account-email">{user.email}</span><button className="button csv-download" onClick={onLogout} disabled={loggingOut}>{loggingOut ? 'Logging out…' : 'Log out'}</button></div></header>
       <main>
         <section className="page-heading"><div><div className="eyebrow"><span /> YOUR CONNECTIONS, SIMPLIFIED</div><h1>{view === 'overview' ? 'A little link. A lot of impact.' : 'Every link, in one place.'}</h1><p>Create memorable links. Share them anywhere. See where they go.</p></div><button className="button primary heading-button" onClick={focusCreate}><Plus size={17} />New link</button></section>
 
@@ -129,11 +161,12 @@ export function App() {
               <label htmlFor="destination">Destination URL <span className="required">*</span></label>
               <div className="input-with-icon"><Globe2 size={18} /><input ref={urlInput} id="destination" type="url" placeholder="https://example.com/your-next-big-idea" required maxLength={2048} value={url} onChange={e => setUrl(e.target.value)} /></div>
               <p className="field-hint">Paste the full link you want to share, including https://</p>
+              <div className="expiry-options"><div><label htmlFor="expiry-preset">Link expiration</label><select id="expiry-preset" value={expiryPreset} disabled={creating} onChange={e => { setExpiryPreset(e.target.value as ExpiryPreset); setExpiry(''); }} aria-describedby="expiry-hint"><option value="none">No expiration · ไม่หมดอายุ</option><option value="1h">1 hour · 1 ชั่วโมง</option><option value="1d">1 day · 1 วัน</option><option value="7d">7 days · 7 วัน</option><option value="custom">Custom date &amp; time · กำหนดเอง</option></select><p className="field-hint" id="expiry-hint">Durations start when the server creates your link.</p></div>{expiryPreset === 'custom' && <div><label htmlFor="expiry">Expires at ({localTimeZone})</label><input id="expiry" type="datetime-local" required disabled={creating} value={expiry} onChange={e => setExpiry(e.target.value)} aria-describedby="custom-expiry-hint" /><p className="field-hint" id="custom-expiry-hint">Enter a future time in {localTimeZone}. Stored as UTC.</p></div>}</div>
               <div className="form-bottom"><button type="button" className="advanced-toggle" aria-expanded={advanced} aria-controls="advanced-options" onClick={() => setAdvanced(!advanced)}><Plus size={15} className={advanced ? 'rotate' : ''} />Link options<span>Optional</span></button><button className="button primary" disabled={creating}>{creating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}{creating ? 'Creating…' : 'Shorten link'}{!creating && <ArrowRight size={16} />}</button></div>
-              {advanced && <div className="advanced-fields" id="advanced-options"><div><label htmlFor="title">Link title</label><input id="title" placeholder="e.g. Product launch" maxLength={120} value={title} onChange={e => setTitle(e.target.value)} /></div><div><label htmlFor="alias">Custom alias</label><input id="alias" placeholder="e.g. launch-2026" pattern="[A-Za-z0-9_-]{4,32}" minLength={4} maxLength={32} value={alias} onChange={e => setAlias(e.target.value)} /><p className="field-hint">4–32 letters, numbers, - or _</p></div><div><label htmlFor="expiry">Expires at</label><input id="expiry" type="datetime-local" value={expiry} onChange={e => setExpiry(e.target.value)} /><p className="field-hint">Your local time. Leave blank for no expiry.</p></div></div>}
+              {advanced && <div className="advanced-fields" id="advanced-options"><div><label htmlFor="title">Link title</label><input id="title" placeholder="e.g. Product launch" maxLength={120} value={title} onChange={e => setTitle(e.target.value)} /></div><div><label htmlFor="alias">Custom alias</label><input id="alias" placeholder="e.g. launch-2026" pattern="[A-Za-z0-9_-]{4,32}" minLength={4} maxLength={32} value={alias} onChange={e => setAlias(e.target.value)} /><p className="field-hint">4–32 letters, numbers, - or _</p></div></div>}
               {createError && <p className="form-error" role="alert">{createError}</p>}
             </form>
-            {created && <div className="created-result" role="status"><div className="result-heading"><Check size={17} /><strong>Ready for the world.</strong><button className="icon-button" aria-label="Dismiss created link" onClick={() => setCreated(null)}><X size={15} /></button></div><div className="result-link"><a href={created.shortUrl} target="_blank" rel="noreferrer">{created.shortUrl}</a><button className="icon-button" aria-label="Copy new short link" onClick={() => void copy(created)}>{copied === created.code ? <Check size={17} /> : <Copy size={17} />}</button><button className="icon-button" aria-label="Show new QR code" onClick={() => setQr(created)}><QrCode size={18} /></button></div></div>}
+            {created && <div className="created-result" role="status"><div className="result-heading"><Check size={17} /><strong>Ready for the world.</strong><button className="icon-button" aria-label="Dismiss created link" onClick={() => setCreated(null)}><X size={15} /></button></div><p className="expiry-summary">Expires: {formatExpiry(created.expiresAt)}</p><div className="result-link"><a href={created.shortUrl} target="_blank" rel="noreferrer">{created.shortUrl}</a><button className="icon-button" aria-label="Copy new short link" onClick={() => void copy(created)}>{copied === created.code ? <Check size={17} /> : <Copy size={17} />}</button><a className="icon-button" href={`/preview/${created.code}`} aria-label="Preview new short link" title="Preview destination"><Eye size={18} /></a><button className="icon-button" aria-label="Show new QR code" onClick={() => setQr(created)}><QrCode size={18} /></button></div></div>}
           </section>
 
           <section className="panel activity-panel"><div className="activity-heading"><h2>A week of connections</h2><span>LAST 7 DAYS</span></div><div className="activity-summary"><strong>{formatNumber(stats?.daily.reduce((sum, day) => sum + day.clicks, 0) ?? 0)}</strong><span>link opens <ArrowUpRight size={14} /></span></div><div className="bar-chart" role="img" aria-label={`Daily link opens in UTC: ${stats?.daily.map(d => `${d.date}: ${d.clicks}`).join(', ') ?? 'Loading'}`}>
@@ -141,11 +174,11 @@ export function App() {
           </div><div className="chart-caption"><span className="chart-dot" />Successful opens · UTC · updates every 15s</div></section>
         </div>
 
-        <section className="panel history-panel" id="link-history"><div className="history-heading"><div><h2>{view === 'links' ? 'All your links' : 'Your links'}<span className="pill">{links?.total ?? 0}</span></h2><p>A home for every connection you create.</p></div><div className="search-field"><Search size={17} /><input type="search" aria-label="Search links" placeholder="Search links…" value={search} onChange={e => setSearch(e.target.value)} /></div></div>
+        <section className="panel history-panel" id="link-history"><div className="history-heading"><div><h2>{view === 'links' ? 'All your links' : 'Your links'}<span className="pill">{links?.total ?? 0}</span></h2><p>Your history is private. Short URLs, Preview and QR are public.</p></div><div className="history-tools"><div className="search-field"><Search size={17} /><input type="search" aria-label="Search links" placeholder="Search links…" value={search} onChange={e => setSearch(e.target.value)} /></div><button className="button csv-download" onClick={() => void downloadCsv()} disabled={exporting || loading || search !== debouncedSearch || !links} aria-describedby="csv-scope">{exporting ? <Loader2 size={17} className="spin" /> : <ArrowDownToLine size={17} />}{exporting ? 'Downloading…' : 'ดาวน์โหลด CSV'}</button><p id="csv-scope">ประวัติของคุณ · ทุกหน้าตามคำค้น · สูงสุด 10,000 รายการ</p></div></div>{exporting && <p className="csv-feedback" role="status">Preparing My links CSV…</p>}{exportError && <p className="form-error csv-feedback" role="alert">{exportError}</p>}
           <div className="table-scroll"><table><thead><tr><th>LINK & DESTINATION</th><th>CREATED</th><th>OPENS</th><th>STATUS</th><th className="actions-heading">ACTIONS</th></tr></thead><tbody>
-            {loading ? <tr><td colSpan={5}><div className="empty-state"><Loader2 className="spin" size={25} /><h3>Loading your links…</h3></div></td></tr> : !links?.items.length ? <tr><td colSpan={5}><div className="empty-state"><span className="empty-icon"><Link2 size={25} /></span><h3>{debouncedSearch ? 'No matching links' : 'Your next connection starts here'}</h3><p>{debouncedSearch ? 'Try a different title, destination or alias.' : 'Create your first short link and watch its story unfold.'}</p>{!debouncedSearch && <button className="text-button" onClick={focusCreate}>Create your first link <ArrowRight size={15} /></button>}</div></td></tr> : links.items.map(link => <tr key={link.id}><td><div className="link-cell"><span className="link-avatar"><Link2 size={19} /></span><div className="link-details"><a className="short-link" href={link.shortUrl} target="_blank" rel="noreferrer">{link.title || `/${link.code}`}<ArrowUpRight size={13} /></a><div className="short-address">{link.shortUrl}</div><a className="destination" href={link.originalUrl} title={link.originalUrl} target="_blank" rel="noreferrer">{link.originalUrl}</a></div></div></td><td className="date-cell">{formatDate(link.createdAt)}</td><td><span className="click-count"><BarChart3 size={14} />{formatNumber(link.clicks)}</span></td><td><span className={`status-pill ${expired(link) ? 'expired' : ''}`} title={link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleString()}` : 'No expiration'}><span />{expired(link) ? 'Expired' : 'Active'}</span></td><td><div className="row-actions"><button className="icon-button" aria-label={`Copy link ${link.code}`} title="Copy short link" onClick={() => void copy(link)}>{copied === link.code ? <Check size={16} /> : <Copy size={16} />}</button><button className="icon-button" aria-label={`QR code for ${link.code}`} title="View QR code" onClick={() => setQr(link)}><QrCode size={17} /></button><a className="icon-button" href={link.shortUrl} aria-label={`Open link ${link.code}`} title="Open short link" target="_blank" rel="noreferrer"><ExternalLink size={16} /></a></div></td></tr>)}
+            {loading ? <tr><td colSpan={5}><div className="empty-state"><Loader2 className="spin" size={25} /><h3>Loading your links…</h3></div></td></tr> : !links?.items.length ? <tr><td colSpan={5}><div className="empty-state"><span className="empty-icon"><Link2 size={25} /></span><h3>{debouncedSearch ? 'No matching links' : 'Your next connection starts here'}</h3><p>{debouncedSearch ? 'Try a different title, destination or alias.' : 'Create your first short link and watch its story unfold.'}</p>{!debouncedSearch && <button className="text-button" onClick={focusCreate}>Create your first link <ArrowRight size={15} /></button>}</div></td></tr> : links.items.map(link => <tr key={link.id}><td><div className="link-cell"><span className="link-avatar"><Link2 size={19} /></span><div className="link-details"><a className="short-link" href={link.shortUrl} target="_blank" rel="noreferrer">{link.title || `/${link.code}`}<ArrowUpRight size={13} /></a><div className="short-address">{link.shortUrl}</div><a className="destination" href={link.originalUrl} title={link.originalUrl} target="_blank" rel="noreferrer">{link.originalUrl}</a></div></div></td><td className="date-cell">{formatDate(link.createdAt)}</td><td><span className="click-count"><BarChart3 size={14} />{formatNumber(link.clicks)}</span></td><td><span className={`status-pill ${expired(link) ? 'expired' : ''}`} title={formatExpiry(link.expiresAt)}><span />{expired(link) ? 'Expired' : 'Active'}</span><p className="expiry-summary">{formatExpiry(link.expiresAt)}</p></td><td><div className="row-actions"><button className="icon-button" aria-label={`Copy link ${link.code}`} title="Copy short link" onClick={() => void copy(link)}>{copied === link.code ? <Check size={16} /> : <Copy size={16} />}</button><button className="icon-button" aria-label={`QR code for ${link.code}`} title="View QR code" onClick={() => setQr(link)}><QrCode size={17} /></button><a className="icon-button" href={`/preview/${link.code}`} aria-label={`Preview link ${link.code}`} title="Preview destination"><Eye size={17} /></a><a className="icon-button" href={link.shortUrl} aria-label={`Open link ${link.code}`} title="Open short link" target="_blank" rel="noreferrer"><ExternalLink size={16} /></a></div></td></tr>)}
           </tbody></table></div>
-          <div className="table-footer"><span>{links?.total ? `${(page - 1) * 6 + 1}–${Math.min(page * 6, links.total)} of ${formatNumber(links.total)} links` : 'No links yet'}<span className="shared-note"> · Shared demo workspace</span></span><div className="pagination"><button aria-label="Previous page" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}><ChevronLeft size={16} /></button><span>{page} / {totalPages}</span><button aria-label="Next page" disabled={page >= totalPages || loading} onClick={() => setPage(page + 1)}><ChevronRight size={16} /></button></div></div>
+          <div className="table-footer"><span>{links?.total ? `${(page - 1) * 6 + 1}–${Math.min(page * 6, links.total)} of ${formatNumber(links.total)} links` : 'No links yet'}<span className="shared-note"> · My links · public sharing</span></span><div className="pagination"><button aria-label="Previous page" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}><ChevronLeft size={16} /></button><span>{page} / {totalPages}</span><button aria-label="Next page" disabled={page >= totalPages || loading} onClick={() => setPage(page + 1)}><ChevronRight size={16} /></button></div></div>
         </section>
         <footer className="main-footer"><span>Thoughtfully built. Simply connected.</span><span>React + Express + PostgreSQL<span className="footer-dot"> · </span>SYNERRY challenge</span></footer>
       </main>

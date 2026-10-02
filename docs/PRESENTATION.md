@@ -19,12 +19,14 @@
 
 ซ้อมด้วย live URL จริงก่อนวันนำเสนอ อย่าใช้ localhost QR กับโทรศัพท์ เพราะ localhost บนโทรศัพท์หมายถึงตัวโทรศัพท์เอง
 
+ก่อน demo ให้ Login เป็น A และแสดง My links/สถิติ/CSV ของ A; Logout แล้ว Login เป็น B เพื่อแสดงว่า B ไม่เห็นข้อมูล A แต่ผู้ไม่มี Login ยังเปิด Preview/QR/Short URL ที่แชร์ได้ ลิงก์ legacy ไม่มีเจ้าของไม่ปรากฏใน My links
+
 ## 3. Design (4–5 นาที)
 
 เปิด `DIAGRAMS.md`:
 
 - DFD: input → validation → บันทึกลิงก์ → short URL; GET → lookup → expiry → event → redirect
-- ER: Links 1:N Click Events; unique code; TIMESTAMPTZ; index ที่ใช้ค้นและนับ
+- ER: Users 0..1:N Links, Links 1:N Click Events และ server sessions; unique code; TIMESTAMPTZ; index ที่ใช้ค้นและนับ
 - Architecture: React build/Express ใน service เดียว + PostgreSQL แยก; deploy ง่ายในเวลาสามวัน
 - ชี้แจงตรงไปตรงมาว่าไม่ได้ทำ microservices; ไม่แยก service เพียงเพื่อเรียกชื่อ แต่จัดโครงสร้างให้ต่อยอดได้
 
@@ -56,3 +58,7 @@
 ## ก่อนคุย
 
 ต้องเข้าใจและอธิบายโค้ดที่ส่งได้เอง ซ้อม create/redirect/QR อย่างน้อยหนึ่งรอบจาก live URL เตรียม diagram และผลทดสอบ ไม่ควรกล่าวว่า deploy/QR scan สำเร็จหากยังไม่ได้ตรวจจริง
+
+## สาธิตฟังก์ชัน Preview เพิ่มเติม
+
+เปิดปุ่มรูปตาในประวัติ → อธิบายโดเมนและ URL ปลายทาง → แสดงว่าดู Preview แล้วยอดเปิดไม่เพิ่ม → กด Continue → กลับประวัติและตรวจเพิ่ม 1 ครั้ง หน้า Preview อ่านข้อมูลที่บันทึกไว้เท่านั้น ไม่ fetch เว็บไซต์และไม่รับรองความปลอดภัย การแชร์ Preview ใช้ `/preview/:code` ส่วน Short URL/QR เดิมยังเปิดโดยตรง

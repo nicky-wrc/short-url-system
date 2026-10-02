@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { pool } from './db.js';
 
 export async function migrate() {
-  const sql = await readFile(new URL('../migrations/001_initial.sql', import.meta.url), 'utf8');
+  const sql = await Promise.all(['001_initial.sql', '002_auth.sql'].map(file => readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')));
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(735119)");
-    await client.query(sql);
+    for (const migration of sql) await client.query(migration);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

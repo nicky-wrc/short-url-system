@@ -8,20 +8,31 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx src/migrate.ts",
-    "test": "tsx --test test/integration.test.ts"
+    "test": "tsx --test test/integration.test.ts",
+    "demo:users": "tsx scripts/create-demo-users.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "connect-pg-simple": "^10.0.0",
+    "csrf-sync": "^4.2.1",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
+    "express-session": "^1.19.0",
     "helmet": "^8.1.0",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.3",
+    "@types/express-session": "^1.19.0",
     "@types/node": "^22.18.6",
+    "@types/passport": "^1.0.17",
+    "@types/passport-local": "^1.0.38",
     "@types/pg": "^8.15.5",
     "@types/pngjs": "^6.0.5",
     "@types/qrcode": "^1.5.5",

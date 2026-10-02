@@ -1,5 +1,9 @@
 # Deploy checklist
 
+Login/My links requires migration 002_auth.sql before starting the new server. It preserves legacy links/events, adds nullable ownership/users/sessions and enables RLS. Use the schema/table-owner database role for the server; public Data API roles have no policies. Back up the database and review permissions before applying to a hosted database. Hosted Supabase migration is pending explicit approval in this task; only local QA was migrated.
+
+Production Secure cookies require HTTPS and correctly configured TRUST_PROXY_HOPS. Local HTTP/Compose use development. Run npm run demo:users only against the intended approved database and privately hand off credentials saved under ignored tmp/.
+
 ใช้ host ที่รองรับ Node.js 22 หรือ Docker และ PostgreSQL แบบ persistent เอกสารนี้เป็นขั้นตอนทั่วไป ไม่รับประกันราคาหรือ free tier ของผู้ให้บริการ
 
 ## Node.js host
@@ -10,6 +14,9 @@
    - `DATABASE_URL`: connection string จริง; encode อักขระพิเศษใน username/password
    - `PUBLIC_BASE_URL`: เช่น `https://your-app.example.com` ไม่มี path/query/fragment
    - `NODE_ENV=production`
+   - `SESSION_SECRET`: random secret >=32 characters, outside Git
+   - `SESSION_TTL_HOURS=8`: absolute lifetime
+   - `AUTH_ORIGIN`: browser HTTPS origin; local Vite uses http://localhost:5173
    - `PORT`: ใช้ค่าที่ host จัดให้ Express bind `0.0.0.0`
    - `TRUST_PROXY_HOPS`: จำนวน reverse proxies ที่เชื่อถือและรู้ topology จริง ใช้ 0 local / 1 เมื่อมี proxy เดียว อย่าตั้ง true แบบไม่จำกัด
    - `DATABASE_SSL=true` เมื่อ host ต้องใช้ TLS; ถ้ามี private CA ให้ตั้ง `NODE_EXTRA_CA_CERTS` ตามคู่มือ host ห้ามแก้เป็น `rejectUnauthorized: false`
@@ -37,6 +44,9 @@ Build Dockerfile ที่ root ตั้ง env ชุดเดียวกั�
 - กลับ workspace รอ refresh หรือ focus หน้า และตรวจ count เพิ่ม 1
 - เปิด QR ดาวน์โหลด PNG แล้วสแกนด้วยโทรศัพท์ที่ใช้อินเทอร์เน็ตจริง ตรวจ count เพิ่มอีกครั้ง
 - ลิงก์ที่ไม่พบตอบ 404; วันหมดอายุผ่านไปตอบ 410
+- เปิด `/preview/:code` โดยตรงและ reload ต้องเห็น UI; Preview/HEAD ไม่นับเปิด กด Continue จึงเพิ่ม event; expired Preview ไม่มีปุ่มไปปลายทางที่ใช้งานได้
+- `PUBLIC_BASE_URL` ต้องเป็น public HTTPS origin ของ Express ที่รับทั้ง `/preview/:code`, `/api/*` และ `/:code`; Continue ใช้ short URL นี้ ไม่ได้เปิด destination ตรง ๆ Short URL/QR เก่ายัง Redirect โดยตรง
+- ตั้ง `TEST_DATABASE_RESET=true` เฉพาะฐานข้อมูล local แยกที่ล้างได้ ไม่ตั้ง test suite ให้ชี้ Supabase/application database
 - ทดลองสร้าง alias เดิมได้ 409 โดยไม่เกิด 500
 - Restart/redeploy แอปแล้วตรวจว่าประวัติยังอยู่ (PostgreSQL ต้อง persistent)
 - ตรวจ repository ไม่มี `.env`, credentials, database files หรือ log ที่มี secrets

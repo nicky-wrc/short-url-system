@@ -19,9 +19,11 @@ services:
     environment:
       DATABASE_URL: postgresql://shorturl:${POSTGRES_PASSWORD}@db:5432/shorturl
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-development}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in root .env}
+      AUTH_ORIGIN: ${PUBLIC_BASE_URL:-http://localhost:3000}
       PORT: 3000
-      TRUST_PROXY_HOPS: 0
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
     depends_on:
       db:
         condition: service_healthy
