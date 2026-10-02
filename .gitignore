@@ -36,5 +36,10 @@ __pycache__/
 Thumbs.db
 Desktop.ini
 
+# Local development guidance, not part of the application deliverable
+/AGENTS.md
+/DESIGN.md
+/SKILL.md
+
 # Public database CA certificates (*.crt), SQL migrations,
 # package-lock.json and .env.example are intentionally committed.
