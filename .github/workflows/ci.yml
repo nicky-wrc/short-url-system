@@ -1,0 +1,31 @@
+name: Verify Link Studio
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shorturl
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: shorturl_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U shorturl -d shorturl_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://shorturl:ci-only-password@localhost:5432/shorturl_test
+      TEST_DATABASE_URL: postgresql://shorturl:ci-only-password@localhost:5432/shorturl_test
+      PUBLIC_BASE_URL: http://localhost:3000
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test

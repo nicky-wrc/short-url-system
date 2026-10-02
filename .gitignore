@@ -1,0 +1,40 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local environment and credentials (commit examples only)
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+
+# Temporary database clusters, environment backups and QA artifacts
+tmp/
+backups/
+*.dump
+*.backup
+
+# Logs and Python cache used by setup helpers
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+
+# Machine-specific editor and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Public database CA certificates (*.crt), SQL migrations,
+# package-lock.json and .env.example are intentionally committed.

@@ -1,0 +1,21 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
+
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)), quiet: true });
+const schema = z.object({
+  DATABASE_URL: z.string().startsWith('postgres'),
+  PUBLIC_BASE_URL: z.url().default('http://localhost:3000'),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+  DATABASE_SSL: z.enum(['true', 'false']).default('false'),
+  DATABASE_SSL_CA_FILE: z.string().optional(),
+});
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) throw new Error(`Invalid environment: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+const base = new URL(parsed.data.PUBLIC_BASE_URL);
+if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash || base.pathname !== '/') {
+  throw new Error('PUBLIC_BASE_URL must be an http(s) origin without credentials, path, query or fragment');
+}
+export const config = { ...parsed.data, PUBLIC_BASE_URL: base.origin };
