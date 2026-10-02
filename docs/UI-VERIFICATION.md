@@ -76,3 +76,11 @@ Do not interpret the UI success message as proof of a file saved to disk.
 No physical phone scan, Excel opening, screen-reader audit or Safari/Firefox/device testing was performed.
 The password-change form was visually inspected; credential-change submission was not performed through
 browser automation. No deployment or production-data writes were performed in this task.
+
+## Progressive Login/Register verification
+
+Frontend-only adaptation of the supplied auth reference. Typecheck, 39 existing tests (3 startup + 36 database integration), and frontend/backend build passed. Browser checks against the disposable local QA database: registration with name, password confirmation mismatch, back preserving values, real successful registration showing QA Auth in the workspace; password visibility; incorrect login error, successful login and logout returning to Account; keyboard focus reaches Continue with a solid outline. Screenshots inspected at 390, 768 and 1440px. The first desktop capture taken while styles were loading was discarded and recaptured after verifying the form's actual 440px bounding rectangle. No overflow at 390/768px. Backend and dependencies unchanged; no production data modified. Not verified on a physical phone or deployed in this task.
+
+## Interactive button verification
+
+Typecheck, build and 39 existing tests passed after integrating native forwarded button/anchor components. Browser checks on isolated QA data: Login, New link, create link, QR dialog + actual PNG download, disable/enable, exact accessible names, keyboard focus and disabled pagination without animation classes. Inspected screenshots at 390 and 1440px; mobile has no horizontal overflow and focused Copy shows the lime reveal with readable text/arrow. Preview retains its native backend redirect href and copy button. The CSV action returned without an error but the in-app browser did not report a Blob download event (two bounded attempts); saving its CSV file was not confirmed in this browser run. CSV backend regression tests passed and export handler remains unchanged. Reduced-motion/coarse-pointer rules were inspected in CSS, not emulated on a real device. No deployment or physical mobile test.

@@ -318,3 +318,11 @@ Migration `005_avatar.sql` เพิ่ม `users.avatar_image` และ `avata
 รหัสทั้งสองต้องตรงกันก่อนส่ง API โดยไม่ส่งหรือจัดเก็บรหัสยืนยัน ชื่อบันทึกใน users.display_name
 ตั้งแต่สมัครและแสดงใน Profile/workspace ได้ทันที API เดิมยังสมัครด้วย email/password ได้
 ดู contract ที่เพิ่มใน [Authentication documentation](docs/AUTH.md#registration-name-and-confirmation)
+
+## Progressive authentication UI
+
+Login now uses Account → Password; registration uses Account (display name + email) → Password → Confirm. Continue/back/edit only change frontend form state. Only the final submission calls the existing Login/Register API; successful authentication opens the workspace immediately. Password rules remain at least 10 characters and at most 72 UTF-8 bytes, with matching confirmation on registration. Password visibility controls, labels, automatic step focus and busy locks support keyboard use. No social login, fake onboarding timer or new backend endpoint was introduced.
+
+## Shared interactive buttons
+
+`frontend/src/components/ui/interactive-hover-button.tsx` contains reusable native button/anchor wrappers, adapting the supplied hover-button reference to existing CSS rather than adding Tailwind/shadcn. Native props/ref, submit type, download/href/target and existing event handlers are forwarded. Text actions use a lime expanding fill and sliding text/arrow on pointer hover or keyboard focus (180ms, specific properties only). Back keeps its left arrow. Icon-only controls and Link options disclosure stay simple. Disabled/loading actions retain their original content without duplicated animation layers. The decorative repeat is aria-hidden; accessible names and focus outlines remain. Coarse pointers keep static labels; reduced-motion removes movement/transitions. No dependency or backend changes.

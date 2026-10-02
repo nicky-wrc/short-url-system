@@ -53,3 +53,7 @@
   transition:none!important;
   scroll-behavior:auto!important}
 }
+
+:root { --auth-width:440px; --auth-mark-size:56px; }
+
+:root { --button-motion:180ms ease; }
