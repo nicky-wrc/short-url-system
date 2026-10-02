@@ -495,6 +495,10 @@ test('auth migration preserves old links/events and leaves legacy ownership uncl
     await client.query(await readFile(new URL('../migrations/001_initial.sql', import.meta.url), 'utf8'));
     await client.query("INSERT INTO links(code, original_url) VALUES('old-link', 'https://example.com/old'); INSERT INTO click_events(link_id) SELECT id FROM links");
     const sql = await readFile(new URL('../migrations/002_auth.sql', import.meta.url), 'utf8'); await client.query(sql); await client.query(sql);
+    await client.query("INSERT INTO users(email,password_hash) VALUES('legacy-owner@example.test','legacy-hash')");
+    const profileSql = await readFile(new URL('../migrations/003_profile.sql', import.meta.url), 'utf8');
+    await client.query(profileSql); await client.query(profileSql);
+    assert.deepEqual((await client.query('SELECT email,password_hash,display_name FROM users')).rows[0], { email: 'legacy-owner@example.test', password_hash: 'legacy-hash', display_name: '' });
     const row = (await client.query('SELECT code, original_url, owner_id, (SELECT COUNT(*)::int FROM click_events) AS events FROM links')).rows[0];
     assert.deepEqual(row, { code: 'old-link', original_url: 'https://example.com/old', owner_id: null, events: 1 });
   } finally { await client.query('ROLLBACK'); client.release(); }
@@ -507,6 +511,46 @@ test('auth migration preserves old links/events and leaves legacy ownership uncl
     await signedRequest().get('/api/links/legacy-auth').expect(404);
     assert.equal((await pool.query('SELECT owner_id FROM links WHERE id=$1', [old.rows[0].id])).rows[0].owner_id, null);
   } finally { await pool.query('DELETE FROM links WHERE id=$1', [old.rows[0].id]); }
+});
+
+test('profile update is private, validated, CSRF-protected and persists without changing ownership', async () => {
+  const a = await account('profile-a@example.test'); const b = await account('profile-b@example.test');
+  await request(app).patch('/api/auth/profile').send({ displayName: 'Anonymous' }).expect(401);
+  await a.agent.patch('/api/auth/profile').send({ displayName: 'Missing CSRF' }).expect(403);
+  for (const body of [{ displayName: '' }, { displayName: 'x'.repeat(81) }, { displayName: 'bad\u0000name' }, { displayName: 'Name', id: b.user.id }]) {
+    await a.agent.patch('/api/auth/profile').set('X-CSRF-Token', a.token).send(body).expect(400);
+  }
+  const result = await a.agent.patch('/api/auth/profile').set('X-CSRF-Token', a.token).send({ displayName: '  Nicky <script> & Thai  ' }).expect(200);
+  assert.equal(result.body.user.displayName, 'Nicky <script> & Thai');
+  assert.equal(result.body.user.id, a.user.id); assert.equal(result.body.user.email, a.user.email);
+  assert.equal((await a.agent.get('/api/auth/session').expect(200)).body.user.displayName, 'Nicky <script> & Thai');
+  assert.equal((await b.agent.get('/api/auth/session').expect(200)).body.user.displayName, '');
+});
+
+test('password change validates current credentials, revokes all own sessions and preserves links and other users', async () => {
+  const a = await account('password-a@example.test'); const b = await account('password-b@example.test');
+  const second = request.agent(app); const bootstrap = await second.get('/api/auth/session').expect(200);
+  await second.post('/api/auth/login').set('X-CSRF-Token', bootstrap.body.csrfToken).send({ email: a.user.email, password: 'Test-only-password-12345' }).expect(200);
+  const made = await a.agent.post('/api/links').set('X-CSRF-Token', a.token).send({ originalUrl: 'https://example.com/password-change?keep=1#frag' }).expect(201);
+  const write = (body: unknown) => a.agent.post('/api/auth/password').set('X-CSRF-Token', a.token).send(body as object);
+  await request(app).post('/api/auth/password').send({}).expect(401);
+  await a.agent.post('/api/auth/password').send({}).expect(403);
+  await write({ currentPassword: 'wrong-password-1234', newPassword: 'New-test-password-1234' }).expect(400);
+  await write({ currentPassword: 'Test-only-password-12345', newPassword: 'short' }).expect(400);
+  await write({ currentPassword: 'Test-only-password-12345', newPassword: 'x'.repeat(73) }).expect(400);
+  await write({ currentPassword: 'Test-only-password-12345', newPassword: 'Test-only-password-12345' }).expect(400);
+  await write({ currentPassword: 'Test-only-password-12345', newPassword: 'New-test-password-1234', id: b.user.id }).expect(400);
+  await write({ currentPassword: 'Test-only-password-12345', newPassword: 'New-test-password-1234' }).expect(204);
+  await a.agent.get('/api/links').expect(401); await second.get('/api/links').expect(401);
+  await request(app).get('/api/links').set('Cookie', a.cookie).expect(401);
+  await b.agent.get('/api/links').expect(200);
+  const anon = await a.agent.get('/api/auth/session').expect(200);
+  await a.agent.post('/api/auth/login').set('X-CSRF-Token', anon.body.csrfToken).send({ email: a.user.email, password: 'Test-only-password-12345' }).expect(401);
+  const logged = await a.agent.post('/api/auth/login').set('X-CSRF-Token', anon.body.csrfToken).send({ email: a.user.email, password: 'New-test-password-1234' }).expect(200);
+  const link = await a.agent.get(`/api/links/${made.body.code}`).expect(200); assert.equal(link.body.clicks, 0);
+  await request(app).get(`/api/links/${made.body.code}/qr`).expect(200);
+  await request(app).get(`/${made.body.code}`).expect(302).expect('Location', 'https://example.com/password-change?keep=1#frag');
+  assert.ok(logged.body.user.id === a.user.id);
 });
 
 test('login and register have bounded request rates', async () => {

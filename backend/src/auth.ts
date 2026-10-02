@@ -11,7 +11,7 @@ import { pool } from './db.js';
 import { config } from './config.js';
 import { clock } from './clock.js';
 
-declare global { namespace Express { interface User { id: string; email: string } } }
+declare global { namespace Express { interface User { id: string; email: string; displayName: string } } }
 declare module 'express-session' { interface SessionData { authExpiresAt?: number } }
 
 const cookieName = config.NODE_ENV === 'production' ? '__Host-linkstudio.sid' : 'linkstudio.sid';
@@ -27,16 +27,16 @@ const credentials = z.object({ email: z.email().max(254).transform(value => valu
   password: z.string().min(10).refine(value => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes.') }).strict();
 passport.use(new Strategy({ usernameField: 'email' }, async (email, password, done) => {
   try {
-    const found = await pool.query('SELECT id, email, password_hash FROM users WHERE email=$1', [email.toLowerCase()]);
+    const found = await pool.query('SELECT id, email, display_name, password_hash FROM users WHERE email=$1', [email.toLowerCase()]);
     const user = found.rows[0];
     const valid = await bcrypt.compare(password, user?.password_hash ?? dummyHash);
-    done(null, valid && user ? { id: String(user.id), email: user.email } : false);
+    done(null, valid && user ? { id: String(user.id), email: user.email, displayName: user.display_name } : false);
   } catch (error) { done(error); }
 }));
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id: string, done) => {
-  try { const found = await pool.query('SELECT id, email FROM users WHERE id=$1', [id]);
-    done(null, found.rows[0] ? { id: String(found.rows[0].id), email: found.rows[0].email } : false);
+  try { const found = await pool.query('SELECT id, email, display_name FROM users WHERE id=$1', [id]);
+    done(null, found.rows[0] ? { id: String(found.rows[0].id), email: found.rows[0].email, displayName: found.rows[0].display_name } : false);
   } catch (error) { done(error); }
 });
 export const expireSession: RequestHandler = (req, res, next) => {
@@ -77,8 +77,8 @@ const completeLogin: RequestHandler = (req, res, next) => {
 authRouter.post('/register', limiter(), protectWrite, validateCredentials, async (req, res, next) => {
   const hash = await bcrypt.hash(req.body.password, 12);
   let user: Express.User;
-  try { const found = await pool.query('INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id,email', [req.body.email, hash]);
-    user = { id: String(found.rows[0].id), email: found.rows[0].email };
+  try { const found = await pool.query('INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id,email,display_name', [req.body.email, hash]);
+    user = { id: String(found.rows[0].id), email: found.rows[0].email, displayName: found.rows[0].display_name };
   } catch (error) {
     if ((error as { code?: string }).code === '23505') { res.status(409).json({ error: 'Unable to register with this email. Use another email or log in.' }); return; }
     throw error;
@@ -94,4 +94,33 @@ authRouter.post('/login', limiter(), protectWrite, validateCredentials, (req, re
 });
 authRouter.post('/logout', requireAuth, protectWrite, (req, res, next) => {
   req.session.destroy(error => { if (error) return next(error); res.clearCookie(cookieName, cookieOptions); res.status(204).end(); });
+});
+
+const displayNameSchema = z.object({ displayName: z.string().trim().min(1).max(80).refine(value => !/[\p{Cc}\p{Cf}]/u.test(value), 'Name must not contain control characters.') }).strict();
+authRouter.patch('/profile', requireAuth, protectWrite, async (req, res) => {
+  const parsed = displayNameSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Enter a name of 1–80 characters without control characters.' }); return; }
+  const result = await pool.query('UPDATE users SET display_name=$1 WHERE id=$2 RETURNING id,email,display_name', [parsed.data.displayName, req.user!.id]);
+  const row = result.rows[0];
+  res.json({ user: { id: String(row.id), email: row.email, displayName: row.display_name } });
+});
+const passwordSchema = z.object({ currentPassword: credentials.shape.password, newPassword: credentials.shape.password }).strict();
+authRouter.post('/password', requireAuth, limiter(), protectWrite, async (req, res, next) => {
+  const parsed = passwordSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Passwords must have at least 10 characters and at most 72 UTF-8 bytes.' }); return; }
+  if (parsed.data.currentPassword === parsed.data.newPassword) { res.status(400).json({ error: 'Choose a different new password.' }); return; }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query('SELECT password_hash FROM users WHERE id=$1 FOR UPDATE', [req.user!.id]);
+    if (!result.rows[0] || !await bcrypt.compare(parsed.data.currentPassword, result.rows[0].password_hash)) {
+      await client.query('ROLLBACK'); res.status(400).json({ error: 'Current password is incorrect.' }); return;
+    }
+    const hash = await bcrypt.hash(parsed.data.newPassword, 12);
+    await client.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.user!.id]);
+    await client.query("DELETE FROM sessions WHERE sess->'passport'->>'user'=$1", [req.user!.id]);
+    await client.query('COMMIT');
+    req.session.destroy(error => { if (error) return next(error); res.clearCookie(cookieName, cookieOptions); res.status(204).end(); });
+  } catch (error) { await client.query('ROLLBACK'); next(error); }
+  finally { client.release(); }
 });

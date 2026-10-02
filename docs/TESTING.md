@@ -113,3 +113,9 @@
 - Browser ค้น `qa-csv-8` แล้วดาวน์โหลดได้ไฟล์ 414 bytes มีเฉพาะ 1 รายการตรงคำค้น ไม่มี console errors ที่ตรวจ เครื่องมือ waitForEvent(download) timeout สำหรับ Blob download แต่ตรวจไฟล์ที่เกิดจริงใน Downloads ได้ จึงไม่ใช้ event timeout เป็นหลักฐานว่าดาวน์โหลดไม่สำเร็จ
 - Mobile 390×844: document 375px ไม่มี horizontal overflow, ปุ่ม CSV สูง 44px, ข้อความ shared history/all pages/limit เห็นชัด ภาพและสำเนา CSV อยู่ `tmp/qa/` (ignored)
 - ยังไม่ได้เปิดไฟล์ด้วย Excel จริง หรือทดสอบ Excel re-save/import หลายเวอร์ชัน; ยังไม่ Deploy รอบนี้ QA fixtures ล้างเฉพาะ code `qa-csv-1` ถึง `qa-csv-8` ใน local test database
+
+## Workspace + Profile (2026-10-02)
+
+30 integration tests passed against the guarded disposable local PostgreSQL database (loopback, `_test`, reset opt-in); no production data reset. New coverage: profile auth/CSRF/validation/strict ownership/persistence; password mismatch, too short/long, unchanged password and extra-ID rejection; all own sessions revoked, old password rejected/new password accepted; other users and existing link/QR/redirect remain usable.
+
+Typecheck and production build passed. Browser QA used a separate local app on port 3112: five distinct menu destinations, profile display-name save and persistence after refresh, create-to-My-links flow, and mobile layout at 390px without document overflow. Password change was verified by HTTP integration tests; it was not submitted through browser UI. No deployment or physical mobile QR scan was performed for this task.

@@ -264,3 +264,18 @@ Diagram แสดงได้บน GitHub ผ่าน Mermaid: [DFD, ER แล
 3. ตรวจ QR ด้วยมือถือและยืนยันว่าจำนวนเปิดเพิ่มในประวัติ
 4. ส่ง repository URL + live URL; ระบบนี้ไม่มี login จึงไม่ต้องส่ง username/password
 5. เตรียมสาธิตตาม [PRESENTATION.md](docs/PRESENTATION.md) ไม่เกิน 30 นาที
+
+## Workspace และ Profile
+
+เมนูแยกเป็น `/#overview` (สรุปและทางลัด), `/#create` (ฟอร์มสร้างลิงก์), `/#links` (ค้นหา/ประวัติ/CSV), `/#analytics` (สถิติของเจ้าของและกราฟ 7 วัน UTC) และ `/#profile` (รายละเอียดบัญชี/เปลี่ยนรหัสผ่าน) ใช้ hash navigation จึงไม่ชนกับ short code และรองรับ refresh/back/forward
+
+Profile แก้ชื่อที่แสดงได้ 1–80 ตัวอักษร ไม่รับ control characters; email เป็นตัวระบุ Login ที่อ่านอย่างเดียว ชื่อถูก render เป็นข้อความ ไม่ใช่ HTML ชื่อเดิมเป็นค่าว่างและ UI ใช้ชื่อ workspace/email แทน
+
+ก่อนรันเวอร์ชันนี้ ให้หยุด backend แล้วรัน `npm run db:migrate` ตามด้วย `npm run dev` Migration `003_profile.sql` เพิ่ม `users.display_name` แบบ additive ไม่ลบสมาชิก ลิงก์ หรือ click events
+
+| API | Contract |
+|---|---|
+| PATCH /api/auth/profile | ต้อง Login + CSRF; `{ "displayName": "Nicky" }`; ส่งกลับ `{ user: { id, email, displayName } }` แก้ได้เฉพาะสมาชิกปัจจุบัน ไม่รับ user ID/email |
+| POST /api/auth/password | ต้อง Login + CSRF; `{ "currentPassword": "...", "newPassword": "..." }`; รหัสต้องต่างกัน 10+ ตัวอักษร ไม่เกิน 72 UTF-8 bytes; จำกัด 20 ครั้ง/15 นาที/IP; สำเร็จ 204 และให้ Login ใหม่ |
+
+เปลี่ยนรหัสตรวจ bcrypt hash ของรหัสเดิมใน transaction พร้อมล็อกแถวสมาชิก อัปเดต hash ใหม่และลบ session ทุกเครื่องของเจ้าของเท่านั้น จากนั้นล้าง cookie ไม่เปลี่ยนเจ้าของลิงก์หรือสถิติ ไม่เพิ่ม email change, password reset, social login, avatar upload หรือ workspace ร่วมในรอบนี้

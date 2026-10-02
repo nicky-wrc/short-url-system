@@ -15,17 +15,17 @@ flowchart LR
     P3(("3.0 สร้าง QR Code"))
     P4(("4.0 ประวัติและสถิติ"))
     P5(("5.0 Preview ปลายทาง"))
-    P6(("6.0 Register / Login / Logout / CSRF"))
+    P6(("6.0 Register / Login / Logout / Profile / CSRF"))
     D1[("D1: Links")]
     D2[("D2: Click Events")]
     D3[("D3: Users password hashes")]
     D4[("D4: Server sessions")]
-    U -->|"email/password หรือ cookie + CSRF"| P6
-    P6 <-->|"hash/compare + user ID"| D3
+    U -->|"email/password, display name หรือ cookie + CSRF"| P6
+    P6 <-->|"hash/compare + current user profile"| D3
     P6 <-->|"สร้าง / ตรวจ expiry / revoke"| D4
     P6 -->|"authenticated owner identity"| P1
     P6 -->|"authenticated owner identity"| P4
-    P6 -->|"cookie / token / error"| U
+    P6 -->|"cookie / token / own profile / error"| U
     U -->|"URL ต้นฉบับ, ชื่อ, alias, expiryPreset หรือ custom expiresAt"| P1
     P1 -->|"ข้อมูลลิงก์ที่ตรวจสอบแล้ว"| D1
     D1 -->|"รหัสซ้ำ / ข้อมูลลิงก์"| P1
@@ -108,6 +108,7 @@ erDiagram
         bigint id PK
         varchar email UK
         text password_hash "bcrypt cost 12"
+        varchar display_name "default empty; max 80"
         timestamptz created_at
     }
     SESSIONS {

@@ -218,3 +218,12 @@ td { font-size: 12px; border-color: var(--border); }
   .preview-actions .button { width: 100%; }
   .preview-destination strong { font-size: 21px; }
 }
+
+/* Distinct workspace pages and account forms. */
+.account-nav-label{display:block;border-top:1px solid var(--hairline);padding-top:24px;margin-top:24px}
+.workspace strong{overflow-wrap:anywhere}.workspace-page-row{grid-template-columns:1fr 1fr}.workspace-page-row:has(.create-panel),.workspace-page-row:has(.activity-panel:only-child){grid-template-columns:1fr}
+.overview-actions,.profile-panel,.profile-summary{padding:32px}.overview-actions p,.profile-panel>p,.profile-summary p{color:var(--subdued);line-height:1.7;margin:16px 0 24px;font-size:14px}.overview-actions .button{margin:8px 12px 0 0}.profile-layout{display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,2fr);gap:24px;align-items:start}.profile-forms{display:grid;gap:24px}.profile-panel form{display:grid;gap:14px}.profile-panel label{margin:8px 0 0}.profile-panel input{min-height:44px}.profile-panel input[readonly]{opacity:.7}.profile-panel .button{justify-self:start}.profile-avatar{width:64px;height:64px;display:grid;place-items:center;background:var(--canvas-mid);border-radius:999px;margin-bottom:24px;color:var(--accent)}.profile-email{overflow-wrap:anywhere}.profile-success{border:1px solid var(--hairline);padding:16px;color:var(--text)}
+@media(max-width:900px){.profile-layout,.workspace-page-row{grid-template-columns:1fr}}
+@media(max-width:620px){.sidebar{display:flex;flex-wrap:wrap;gap:16px}.sidebar nav{width:100%;overflow-x:auto;gap:8px;padding-bottom:4px}.sidebar .nav-item{min-height:44px;white-space:nowrap;flex-shrink:0}.account-nav-label{display:none}.profile-panel,.profile-summary,.overview-actions{padding:24px}.profile-panel .button{width:100%}.topbar-right{min-width:0}.account-email{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+@media(max-width:620px){.sidebar nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;overflow:visible;gap:8px;padding:0}.sidebar .nav-item{width:100%;min-height:44px;font-size:11px;padding:8px;justify-content:center}.topbar .service-status{display:none}}

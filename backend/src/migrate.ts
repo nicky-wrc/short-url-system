@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pool } from './db.js';
 
 export async function migrate() {
-  const sql = await Promise.all(['001_initial.sql', '002_auth.sql'].map(file => readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')));
+  const sql = await Promise.all(['001_initial.sql', '002_auth.sql', '003_profile.sql'].map(file => readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')));
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

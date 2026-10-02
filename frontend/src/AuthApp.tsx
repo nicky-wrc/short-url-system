@@ -22,8 +22,10 @@ export function AuthApp() {
   }, [attempt]);
   useEffect(() => {
     const onExpired = () => { setUser(null); setPassword(''); setError('Your session ended. Please log in again.'); };
+    const onPasswordChanged = () => { setUser(null); setPassword(''); setError('Password changed. All sessions ended. Please log in with your new password.'); };
+    window.addEventListener('password-changed', onPasswordChanged);
     window.addEventListener('auth-required', onExpired);
-    return () => window.removeEventListener('auth-required', onExpired);
+    return () => { window.removeEventListener('auth-required', onExpired); window.removeEventListener('password-changed', onPasswordChanged); };
   }, []);
   useEffect(() => {
     let current = true;
@@ -47,7 +49,7 @@ export function AuthApp() {
     catch (reason) { setError((reason as Error).message); }
     finally { lock.current = false; setBusy(false); }
   }
-  if (user) return <>{error && <div className="error-banner" role="alert">{error}</div>}<App key={user.id} user={user} onLogout={() => void logout()} loggingOut={busy} /></>;
+  if (user) return <>{error && <div className="error-banner" role="alert">{error}</div>}<App key={user.id} user={user} onLogout={() => void logout()} loggingOut={busy} onUserChange={setUser} /></>;
   return <div className="auth-shell"><a href="/" className="brand"><span className="brand-icon"><Link2 size={23} /></span>linkstudio.</a><main className="auth-main"><section className="panel auth-card">
     <span className="section-kicker">YOUR LINKS. YOUR WORKSPACE.</span><h1>{mode === 'login' ? 'Welcome back.' : 'Make room for your links.'}</h1>
     <p>Log in to create links and view your private history, statistics and CSV. Shared short links, Preview and QR stay publicly accessible.</p>

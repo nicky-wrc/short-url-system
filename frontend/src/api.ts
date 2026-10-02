@@ -12,7 +12,7 @@ export interface Stats {
   totalLinks: number; activeLinks: number; totalClicks: number; todayClicks: number;
   daily: { date: string; clicks: number }[]; timezone: string;
 }
-export interface User { id: string; email: string }
+export interface User { id: string; email: string; displayName: string }
 export interface AuthSession { user: User | null; csrfToken: string | null; expiresAt: number | null }
 let csrfToken = '';
 export function clearAuthToken() { csrfToken = ''; }
