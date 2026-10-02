@@ -1235,3 +1235,24 @@ td:first-child {
 @media(prefers-reduced-motion:reduce) {
  .interactive-hover-button .hover-button-label,.interactive-hover-button .hover-button-reveal { transform:none!important; }
 }
+
+/* Four bounded morphing shapes; progress is always driven by real request state. */
+.morph-loading { --morph-size:var(--loader-md); --morph-piece:var(--loader-piece-md); --morph-travel:var(--loader-travel-md); position:relative; display:inline-block; vertical-align:middle; width:var(--morph-size); height:var(--morph-size); flex:0 0 var(--morph-size); color:var(--accent); }
+.morph-loading--sm { --morph-size:var(--loader-sm); --morph-piece:var(--loader-piece-sm); --morph-travel:var(--loader-travel-sm); color:inherit; }
+.morph-loading--lg { --morph-size:var(--loader-lg); --morph-piece:var(--loader-piece-lg); --morph-travel:var(--loader-travel-lg); }
+.morph-loading-piece { position:absolute; top:50%; left:50%; width:var(--morph-piece); height:var(--morph-piece); margin:calc(var(--morph-piece) / -2); background:currentColor; animation-duration:var(--loader-duration); animation-iteration-count:infinite; animation-timing-function:ease-in-out; }
+.morph-loading-piece:nth-child(1) { animation-name:studio-morph-0; animation-delay:-.6s; }
+.morph-loading-piece:nth-child(2) { animation-name:studio-morph-1; animation-delay:-.4s; }
+.morph-loading-piece:nth-child(3) { animation-name:studio-morph-2; animation-delay:-.2s; }
+.morph-loading-piece:nth-child(4) { animation-name:studio-morph-3; }
+@keyframes studio-morph-0 { 0%,100% { transform:translate(0,0) scale(1); border-radius:20%; } 25% { transform:translate(var(--morph-travel),calc(-1 * var(--morph-travel))) scale(1.1); border-radius:50%; } 50% { transform:translate(var(--morph-travel),0) scale(.8); border-radius:25%; } 75% { transform:translate(var(--morph-travel),var(--morph-travel)); border-radius:50%; } }
+@keyframes studio-morph-1 { 0%,100% { transform:translate(0,0) rotate(0deg); border-radius:20%; } 25% { transform:translate(calc(-1 * var(--morph-travel)),calc(-1 * var(--morph-travel))) rotate(90deg); border-radius:50%; } 50% { transform:translate(calc(-1 * var(--morph-travel)),0) rotate(180deg) scale(.8); border-radius:25%; } 75% { transform:translate(calc(-1 * var(--morph-travel)),var(--morph-travel)) rotate(270deg); border-radius:50%; } }
+@keyframes studio-morph-2 { 0%,100% { transform:translate(0,0); border-radius:20%; } 25% { transform:translate(calc(-1 * var(--morph-travel)),var(--morph-travel)) scale(.9); border-radius:50%; } 50% { transform:translate(0,var(--morph-travel)) scale(1.2); border-radius:20%; } 75% { transform:translate(var(--morph-travel),var(--morph-travel)) scale(.8); border-radius:50%; } }
+@keyframes studio-morph-3 { 0%,100% { transform:translate(0,0); border-radius:20%; } 25% { transform:translate(var(--morph-travel),var(--morph-travel)) rotate(-90deg); border-radius:25%; } 50% { transform:translate(0,calc(-1 * var(--morph-travel))) rotate(-180deg) scale(1.2); border-radius:50%; } 75% { transform:translate(calc(-1 * var(--morph-travel)),calc(-1 * var(--morph-travel))) rotate(-270deg); border-radius:25%; } }
+@media(prefers-reduced-motion:reduce) {
+ .morph-loading-piece { animation:none!important; border-radius:20%; }
+ .morph-loading-piece:nth-child(1) { transform:translate(-70%,-70%); }
+ .morph-loading-piece:nth-child(2) { transform:translate(70%,-70%); }
+ .morph-loading-piece:nth-child(3) { transform:translate(-70%,70%); }
+ .morph-loading-piece:nth-child(4) { transform:translate(70%,70%); }
+}

@@ -1,6 +1,7 @@
+import MorphLoading from './components/ui/morph-loading';
 import { InteractiveHoverButton } from './components/ui/interactive-hover-button';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, Loader2, LockKeyhole, Mail, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { api, clearAuthToken, type AuthSession, type User } from './api';
 import { App } from './App';
 
@@ -91,7 +92,7 @@ export function AuthApp() {
       <span className="section-kicker">{mode === 'login' ? 'WELCOME BACK' : 'MAKE IT YOURS'}</span>
       <h1 id="auth-title">{mode === 'login' ? 'Log in to Link Studio' : 'Create your account'}</h1>
       <p className="auth-description">{mode === 'login' ? 'A little less link clutter. Pick up where you left off.' : 'One place for your links, QR codes and recorded opens.'}</p>
-      {loading ? <p className="auth-loading" role="status"><Loader2 className="spin" size={18} />Checking session…</p> : <>
+      {loading ? <p className="auth-loading" role="status"><MorphLoading />Checking session…</p> : <>
         <ol className="auth-progress" aria-label="Account steps">
           {(mode === 'login' ? ['Account', 'Password'] : ['Account', 'Password', 'Confirm']).map((label, index) => <li key={label} aria-current={index === ['account', 'password', 'confirm'].indexOf(step) ? 'step' : undefined}><span>{String(index + 1).padStart(2, '0')}</span>{label}</li>)}
         </ol>
@@ -105,7 +106,7 @@ export function AuthApp() {
           {step === 'confirm' && <div className="auth-field"><label htmlFor="auth-confirm">Confirm password</label><div className="auth-input"><LockKeyhole size={18} aria-hidden="true" /><input ref={confirmationInput} id="auth-confirm" type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" required minLength={10} placeholder="Enter your password again" value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} aria-invalid={!!validationError && password !== confirmation} aria-describedby={validationError ? 'confirm-hint registration-error' : 'confirm-hint'} /><InteractiveHoverButton className="auth-eye" type="button" disabled={busy} aria-label={showConfirmation ? 'Hide confirm password' : 'Show confirm password'} aria-pressed={showConfirmation} onClick={() => setShowConfirmation(!showConfirmation)}>{showConfirmation ? <EyeOff size={19} /> : <Eye size={19} />}</InteractiveHoverButton></div><p className="field-hint" id="confirm-hint">Enter the same password again.</p></div>}
           {validationError && <p className="form-error" id="registration-error" role="alert">{validationError}</p>}
           {error && <div className="form-error" role="alert">{error}<InteractiveHoverButton type="button" className="text-button" disabled={busy} onClick={() => setAttempt(attempt + 1)}>Reload session</InteractiveHoverButton></div>}
-          <InteractiveHoverButton className="button primary auth-submit" disabled={busy}>{busy ? <Loader2 className="spin" size={18} /> : null}{busy ? (mode === 'login' ? 'Logging in…' : 'Creating account…') : finalStep ? (mode === 'login' ? 'Log in' : 'Create account') : 'Continue'}{!busy && <ArrowRight size={18} aria-hidden="true" />}</InteractiveHoverButton>
+          <InteractiveHoverButton className="button primary auth-submit" disabled={busy}>{busy ? <MorphLoading size="sm" /> : null}{busy ? (mode === 'login' ? 'Logging in…' : 'Creating account…') : finalStep ? (mode === 'login' ? 'Log in' : 'Create account') : 'Continue'}{!busy && <ArrowRight size={18} aria-hidden="true" />}</InteractiveHoverButton>
           {step !== 'account' && <InteractiveHoverButton type="button" className="auth-back text-button" disabled={busy} onClick={() => { setStep(step === 'confirm' ? 'password' : 'account'); setValidationError(''); setError(''); setShowPassword(false); setShowConfirmation(false); }}><ArrowLeft size={16} aria-hidden="true" />Go back</InteractiveHoverButton>}
         </form>
         <div className="auth-switch"><span>{mode === 'login' ? 'New to Link Studio?' : 'Already have an account?'}</span><InteractiveHoverButton type="button" className="text-button" disabled={busy} onClick={switchMode}>{mode === 'login' ? 'Create an account' : 'Log in instead'}</InteractiveHoverButton></div>

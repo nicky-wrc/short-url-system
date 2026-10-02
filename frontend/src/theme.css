@@ -57,3 +57,10 @@
 :root { --auth-width:440px; --auth-mark-size:56px; }
 
 :root { --button-motion:180ms ease; }
+
+:root {
+ --loader-sm:20px; --loader-md:64px; --loader-lg:96px;
+ --loader-piece-sm:3px; --loader-piece-md:8px; --loader-piece-lg:12px;
+ --loader-travel-sm:6px; --loader-travel-md:20px; --loader-travel-lg:30px;
+ --loader-duration:2s;
+}
