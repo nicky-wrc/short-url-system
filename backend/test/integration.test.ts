@@ -6,6 +6,7 @@ import request from 'supertest';
 import dotenv from 'dotenv';
 import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
+import sharp from 'sharp';
 
 dotenv.config({ path: '.env', quiet: true });
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -631,6 +632,95 @@ test('redirect waits for an in-flight status update and never records after a co
     await client.query('COMMIT'); const result = await redirect; assert.equal(result.status,410); assert.equal(result.headers.location,undefined);
     assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events WHERE link_id=$1',[made.id])).rows[0].n,0);
   } finally { await client.query('ROLLBACK'); client.release(); if(redirect) await redirect; }
+});
+
+test('registration validates and persists display name without changing legacy credentials contract', async t => {
+  // A fresh auth limiter window keeps validation independent from earlier login tests.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 16 * 60_000 });
+  const agent = request.agent(app);
+  const initial = await agent.get('/api/auth/session').expect(200);
+  const email = 'named-registration@example.test';
+  const password = 'registration-test-password';
+  for (const displayName of ['   ', 'x'.repeat(81), 'bad\u0000name']) {
+    await agent.post('/api/auth/register').set('X-CSRF-Token', initial.body.csrfToken)
+      .send({ email, password, displayName }).expect(400);
+  }
+  await agent.post('/api/auth/register').set('X-CSRF-Token', initial.body.csrfToken)
+    .send({ email, password, displayName: 'Name', ownerId: fixtureUserId }).expect(400);
+  assert.equal((await pool.query('SELECT id FROM users WHERE email=$1', [email])).rowCount, 0);
+  const registered = await agent.post('/api/auth/register').set('X-CSRF-Token', initial.body.csrfToken)
+    .send({ email, password, displayName: '  นิกกี้ Link Studio  ' }).expect(200);
+  assert.equal(registered.body.user.displayName, 'นิกกี้ Link Studio');
+  const stored = (await pool.query('SELECT display_name,password_hash FROM users WHERE email=$1', [email])).rows[0];
+  assert.equal(stored.display_name, 'นิกกี้ Link Studio');
+  assert.notEqual(stored.password_hash, password);
+  assert.ok(stored.password_hash.startsWith('$2'));
+  assert.equal((await agent.get('/api/auth/session').expect(200)).body.user.displayName, 'นิกกี้ Link Studio');
+  await agent.post('/api/auth/logout').set('X-CSRF-Token', registered.body.csrfToken).expect(204);
+  const fresh = await agent.get('/api/auth/session').expect(200);
+  const login = await agent.post('/api/auth/login').set('X-CSRF-Token', fresh.body.csrfToken).send({ email, password }).expect(200);
+  assert.equal(login.body.user.displayName, 'นิกกี้ Link Studio');
+});
+
+test('profile photos normalize pixels, persist across login and remain owner-only', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 32 * 60_000 });
+  const a = await account('avatar-a@example.test'); const b = await account('avatar-b@example.test');
+  const png = await sharp({ create: { width: 12, height: 8, channels: 3, background: '#c8ed86' } }).png().toBuffer();
+  await request(app).put('/api/auth/avatar').type('image/png').send(png).expect(401);
+  await request(app).get('/api/auth/avatar').expect(401);
+  await request(app).delete('/api/auth/avatar').expect(401);
+  await a.agent.put('/api/auth/avatar').type('image/png').send(png).expect(403);
+  await a.agent.get('/api/auth/avatar').expect(404);
+  const added = await a.agent.put('/api/auth/avatar').set('X-CSRF-Token', a.token).type('image/png').send(png).expect(200);
+  assert.ok(added.body.user.avatarUrl.startsWith('/api/auth/avatar?v='));
+  const stored = (await pool.query('SELECT avatar_image,avatar_version FROM users WHERE id=$1', [a.user.id])).rows[0];
+  const metadata = await sharp(stored.avatar_image).metadata();
+  assert.equal(metadata.format, 'webp'); assert.equal(metadata.width, 256); assert.equal(metadata.height, 256);
+  assert.equal(metadata.exif, undefined); assert.ok(stored.avatar_image.length <= 262144);
+  const photo = await a.agent.get(added.body.user.avatarUrl).expect(200);
+  assert.equal(photo.headers['content-type'], 'image/webp'); assert.ok(photo.headers['cache-control'].includes('no-store'));
+  assert.equal(photo.headers['x-content-type-options'], 'nosniff');
+  await b.agent.get(added.body.user.avatarUrl + '&userId=' + a.user.id).expect(404);
+  await b.agent.put('/api/auth/avatar?userId=' + a.user.id).set('X-CSRF-Token', b.token).type('image/png').send(png).expect(200);
+  await b.agent.delete('/api/auth/avatar?userId=' + a.user.id).set('X-CSRF-Token', b.token).expect(200);
+  assert.equal((await pool.query('SELECT avatar_version FROM users WHERE id=$1', [a.user.id])).rows[0].avatar_version, stored.avatar_version);
+  const rename = await a.agent.patch('/api/auth/profile').set('X-CSRF-Token', a.token).send({ displayName: 'Avatar owner' }).expect(200);
+  assert.equal(rename.body.user.avatarUrl, added.body.user.avatarUrl);
+  const jpeg = await sharp(png).jpeg().withExif({ IFD0: { Artist: 'test metadata' } }).toBuffer();
+  const replaced = await a.agent.put('/api/auth/avatar').set('X-CSRF-Token', a.token).type('image/jpeg').send(jpeg).expect(200);
+  assert.notEqual(replaced.body.user.avatarUrl, added.body.user.avatarUrl);
+  const after = (await pool.query('SELECT avatar_image FROM users WHERE id=$1', [a.user.id])).rows[0];
+  assert.equal((await sharp(after.avatar_image).metadata()).exif, undefined);
+  assert.equal((await a.agent.get('/api/auth/session')).body.user.avatarUrl, replaced.body.user.avatarUrl);
+  await a.agent.post('/api/auth/logout').set('X-CSRF-Token', a.token).expect(204);
+  const anonymous = await a.agent.get('/api/auth/session');
+  const relogin = await a.agent.post('/api/auth/login').set('X-CSRF-Token', anonymous.body.csrfToken)
+    .send({ email: 'avatar-a@example.test', password: 'Test-only-password-12345' }).expect(200);
+  assert.equal(relogin.body.user.avatarUrl, replaced.body.user.avatarUrl);
+  const removed = await a.agent.delete('/api/auth/avatar').set('X-CSRF-Token', relogin.body.csrfToken).expect(200);
+  assert.equal(removed.body.user.avatarUrl, null); await a.agent.get('/api/auth/avatar').expect(404);
+  await a.agent.delete('/api/auth/avatar').set('X-CSRF-Token', relogin.body.csrfToken).expect(200);
+});
+
+test('invalid, oversized and expired-session photo uploads cannot replace saved photos', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() + 48 * 60_000 });
+  const a = await account('avatar-validation@example.test');
+  const put = (type: string, bytes: Buffer) => a.agent.put('/api/auth/avatar').set('X-CSRF-Token', a.token).type(type).send(bytes);
+  const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#123456' } }).png().toBuffer();
+  const valid = await put('image/png', png).expect(200); const version = valid.body.user.avatarUrl;
+  await put('image/jpeg', png).expect(400);
+  await put('image/png', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).expect(400);
+  await put('image/png', png.subarray(0, 20)).expect(400);
+  await put('image/png', Buffer.alloc(0)).expect(400);
+  await put('image/svg+xml', Buffer.from('<svg/>')).expect(415);
+  await put('image/png', Buffer.alloc(2 * 1024 * 1024 + 1)).expect(413);
+  const huge = await sharp({ create: { width: 4097, height: 4097, channels: 3, background: '#123456' } }).png().toBuffer();
+  await put('image/png', huge).expect(400);
+  assert.equal((await a.agent.get('/api/auth/session')).body.user.avatarUrl, version);
+  await pool.query("UPDATE sessions SET sess=jsonb_set(sess::jsonb,'{authExpiresAt}','1'::jsonb)::json WHERE sess->'passport'->>'user'=$1", [a.user.id]);
+  await put('image/png', png).expect(401);
+  await a.agent.delete('/api/auth/avatar').set('X-CSRF-Token', a.token).expect(401);
+  assert.equal((await pool.query('SELECT avatar_version FROM users WHERE id=$1',[a.user.id])).rows[0].avatar_version, version.split('=')[1]);
 });
 
 test('login and register have bounded request rates', async () => {

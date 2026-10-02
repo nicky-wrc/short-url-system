@@ -4,7 +4,7 @@
 
 **Stack:** React 19 + TypeScript + Vite / Node.js 22 + Express 5 + TypeScript / PostgreSQL 17
 
-UI ใช้ palette/typography จาก `DESIGN.md`: warm-black canvas, lime pill CTA และ serif display โดยใช้ local font fallbacks เพื่อไม่พึ่งฟอนต์ภายนอก; `styles.css` ดูแล layout และ `theme.css` ดูแล design tokens
+UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพาะ actions สำคัญ และ system sans-serif ที่อ่านไทยได้ โดยไม่โหลดฟอนต์ภายนอก: `frontend/src/theme.css` เป็น tokens กลาง และ `frontend/src/styles.css` ดูแล layout/states; Overview เน้น recent owned links และข้อมูลจริงจาก API เดิม, mobile/tablet ใช้ navigation แบบเปิด/ปิดและประวัติแบบรายการ ดูผลตรวจและข้อจำกัดที่ [UI verification](docs/UI-VERIFICATION.md)
 
 | ข้อกำหนด | Implementation / หลักฐาน |
 |---|---|
@@ -127,7 +127,7 @@ Integration tests ใช้ PostgreSQL จริงผ่าน `TEST_DATABASE_U
 
 Tests ยังถอดรหัส QR กลับเป็น short URL และตรวจ rate limit + `Retry-After`
 
-Suite ปัจจุบันมี 33 tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา
+Suite ปัจจุบันมี 36 integration tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา และการจัดการรูปโปรไฟล์
 
 ## Preview และการนับเปิด
 
@@ -278,7 +278,7 @@ Profile แก้ชื่อที่แสดงได้ 1–80 ตัวอ�
 | PATCH /api/auth/profile | ต้อง Login + CSRF; `{ "displayName": "Nicky" }`; ส่งกลับ `{ user: { id, email, displayName } }` แก้ได้เฉพาะสมาชิกปัจจุบัน ไม่รับ user ID/email |
 | POST /api/auth/password | ต้อง Login + CSRF; `{ "currentPassword": "...", "newPassword": "..." }`; รหัสต้องต่างกัน 10+ ตัวอักษร ไม่เกิน 72 UTF-8 bytes; จำกัด 20 ครั้ง/15 นาที/IP; สำเร็จ 204 และให้ Login ใหม่ |
 
-เปลี่ยนรหัสตรวจ bcrypt hash ของรหัสเดิมใน transaction พร้อมล็อกแถวสมาชิก อัปเดต hash ใหม่และลบ session ทุกเครื่องของเจ้าของเท่านั้น จากนั้นล้าง cookie ไม่เปลี่ยนเจ้าของลิงก์หรือสถิติ ไม่เพิ่ม email change, password reset, social login, avatar upload หรือ workspace ร่วมในรอบนี้
+เปลี่ยนรหัสตรวจ bcrypt hash ของรหัสเดิมใน transaction พร้อมล็อกแถวสมาชิก อัปเดต hash ใหม่และลบ session ทุกเครื่องของเจ้าของเท่านั้น จากนั้นล้าง cookie ไม่เปลี่ยนเจ้าของลิงก์หรือสถิติ ไม่เพิ่ม email change, password reset, social login หรือ workspace ร่วม
 
 ## เปิด / ปิดลิงก์ของเจ้าของ
 
@@ -304,4 +304,17 @@ Open **http://localhost:5173**, matching `AUTH_ORIGIN=http://localhost:5173`. lo
 
 After updating these scripts, press Ctrl+C in the old dev terminal and run `npm run dev` again. When running API/frontend separately, wait for the API listening message before opening the frontend. `npm run dev:web` includes the readiness wait, while `npm run dev -w frontend` starts only Vite.
 
-`npm test` runs 3 local HTTP readiness tests plus 33 PostgreSQL integration tests (36 total). Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes, and no new dependencies are required.
+`npm test` runs 3 local HTTP readiness tests plus 36 PostgreSQL integration tests (39 total). Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes.
+
+### Profile photo
+
+หน้า Profile เลือก เปลี่ยน หรือลบรูปได้ และแสดงรูปเดียวกันใน sidebar รูปเป็นข้อมูลส่วนตัวของบัญชี ไม่แสดงบน Preview สาธารณะ รองรับภาพนิ่ง JPEG/PNG/WebP ขนาดไม่เกิน 2 MiB และ 16,777,216 pixels โดย Sharp ตรวจ/ถอดรหัสจริง ปรับ orientation ตัดเป็นสี่เหลี่ยม 256×256 และแปลงเป็น WebP โดยไม่เก็บ metadata ต้นฉบับ
+
+Migration `005_avatar.sql` เพิ่ม `users.avatar_image` และ `avatar_version` แบบ nullable โดยไม่เปลี่ยนข้อมูลลิงก์/เจ้าของเดิม รัน `npm run db:migrate` ก่อนเริ่ม backend ที่อัปเดต เก็บรูปใน PostgreSQL ไม่ต้องเพิ่ม storage secrets หรือโฟลเดอร์ upload เมื่อ Deploy ต้องติดตั้ง dependency ผ่าน `npm ci` บนระบบปลายทางเพื่อให้ Sharp ใช้ binary ตรง platform ดู contract ที่ [docs/AUTH.md](docs/AUTH.md)
+
+### Create account: ชื่อและยืนยันรหัสผ่าน
+
+ฟอร์มสมัครสมาชิกให้กรอก Display name (1–80 ตัวอักษร), Email, Password และ Confirm password
+รหัสทั้งสองต้องตรงกันก่อนส่ง API โดยไม่ส่งหรือจัดเก็บรหัสยืนยัน ชื่อบันทึกใน users.display_name
+ตั้งแต่สมัครและแสดงใน Profile/workspace ได้ทันที API เดิมยังสมัครด้วย email/password ได้
+ดู contract ที่เพิ่มใน [Authentication documentation](docs/AUTH.md#registration-name-and-confirmation)

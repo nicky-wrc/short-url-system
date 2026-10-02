@@ -141,3 +141,24 @@ Reported ECONNREFUSED happened before the API listening log. Read-only checks ag
 The combined dev command now waits for healthy API/database before Vite, bounds startup to 60 seconds and couples process shutdown. Vite uses localhost:5173 with strictPort, matching the existing AUTH_ORIGIN; 127.0.0.1:5173 would be a different origin. The proxy uses backend PORT, and build remains supported without backend/.env.
 
 Tests: 3 readiness tests + 33 isolated PostgreSQL integration tests passed (36 total), typecheck and build passed. Browser checked `http://localhost:5173`: Login form appeared after session loading and error/warning console log collection was empty. The user's existing dev processes were preserved; restart `npm run dev` to apply changed CLI startup options. Full cold start using the standard ports was not rerun because the user's app currently occupies those ports; delayed/unavailable startup is covered by isolated HTTP tests.
+
+## Registration name and password confirmation (2026-10-03)
+
+Typecheck, backend/frontend builds and 37 tests passed (3 readiness + 34 isolated PostgreSQL tests).
+The new registration test checks invalid/overlong/control-character names, unknown fields, no user
+insert on invalid input, trimming and persisting a Thai name, bcrypt storage, session response and
+name retention after logout/login. Existing email/password-only registration tests still pass.
+
+Browser verified that mismatched passwords show a clear error before submission, focus the confirmation
+field and set aria-invalid. Login has neither name nor confirmation inputs. The new four-field Register
+form was captured at 390/768/1440px with no horizontal overflow. Screenshots are ignored local artifacts
+at `tmp/qa-ui/register-with-name-*.png`. Browser verification did not submit a matching registration;
+successful name persistence and subsequent login were verified through the isolated integration test.
+
+## Profile photo regression checks
+
+Current suite: 3 readiness + 36 PostgreSQL integration tests = 39 passing; typecheck and frontend/backend build passed. Tests use the guarded disposable loopback _test database, never the configured remote application database.
+
+Photo tests cover upload/replace/remove, normalization to WebP 256×256 with EXIF removed, persistence across rename/logout/login, own-only reads/writes even with another user ID in the query, CSRF, anonymous/expired sessions, MIME/signature mismatch, SVG rejection, malformed/empty images, byte and pixel limits, unchanged saved photo after invalid uploads, and idempotent removal.
+
+Browser verification on the local isolated QA database: upload PNG, replace with WebP, refresh and confirm both Profile/sidebar images remain loaded at 256 pixels; reject a fake PNG with visible error and preserve the prior photo. Screenshots inspected at 390, 768 and 1440px; no horizontal overflow. Keyboard Tab reaches Remove photo with a visible solid focus outline. Upload success/error feedback is beside the photo control. Removal and re-login persistence were verified by integration tests. No real personal photo was uploaded. Not deployed or tested on a physical mobile device in this task.

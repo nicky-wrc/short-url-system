@@ -76,13 +76,13 @@ export function LinkPreviewPage({ code }: { code: string }) {
     <header className="preview-header"><a href="/" className="brand" aria-label="Link Studio home"><span className="brand-icon"><Link2 size={23} /></span><span>link<span className="brand-light">studio</span>.</span></a><span>LINK PREVIEW</span></header>
     <main className="preview-main">
       <section className="panel preview-card" aria-busy={loading}>
-        <span className="section-kicker">CHECK THE DESTINATION BEFORE YOU GO</span>
-        <h1>A little look before the leap.</h1>
+        <span className="section-kicker">CHECK YOUR DESTINATION</span>
+        <h1>Link preview</h1>
         {loading ? <p className="preview-loading" role="status"><Loader2 className="spin" size={20} />Loading link details…</p> : error ?
           <div className="preview-error" role="alert"><h2>Preview unavailable</h2><p>{error}</p><button className="button preview-secondary" onClick={() => setAttempt(attempt + 1)}>Try again</button></div> : link && <>
             {link.title && <h2 className="preview-title">{link.title}</h2>}
             <div className="preview-destination"><Globe2 size={24} /><div><span>DESTINATION DOMAIN</span><strong>{link.destinationHost}</strong></div></div>
-            <dl className="preview-details"><div><dt>Full destination URL</dt><dd>{link.originalUrl}</dd></div><div><dt>Status</dt><dd>{disabled ? 'Disabled — the owner has paused this link' : expired ? 'Expired — this link will not redirect' : 'Active'}</dd></div><div><dt>Expires</dt><dd>{formatExpiry(link.expiresAt)}</dd></div></dl>
+            <dl className="preview-details"><div><dt>Full destination URL</dt><dd><details className="destination-details preview-full-url"><summary>View full URL</summary><p>{link.originalUrl}</p></details></dd></div><div><dt>Status</dt><dd>{disabled ? 'Disabled — the owner has paused this link' : expired ? 'Expired — this link will not redirect' : 'Active'}</dd></div><div><dt>Expires</dt><dd>{formatExpiry(link.expiresAt)}</dd></div></dl>
             <p className="preview-disclaimer">This shows the saved destination, not a safety rating. Only continue if you recognize and trust this website.</p>
             <div className="preview-actions">{disabled || expired ? <button className="button primary" disabled>{disabled ? 'Link disabled' : 'Link expired'}</button> : <a className="button primary preview-continue" href={link.shortUrl} rel="noreferrer" aria-disabled={continuing} tabIndex={continuing ? -1 : undefined} onClick={event => void continueToWebsite(event)}>{continuing ? <>Opening website…<Loader2 className="spin" size={17} /></> : <>Continue to website <ArrowUpRight size={17} /></>}</a>}<button className="button preview-secondary" disabled={copying || continuing} onClick={() => void copyPreview()}><Copy size={17} />{copying ? 'Copying…' : 'Copy preview link'}</button></div>
             {continueError && <p className="form-error" role="alert">{continueError}</p>}

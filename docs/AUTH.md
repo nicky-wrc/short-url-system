@@ -30,3 +30,21 @@ POST `/api/auth/password` is authenticated, CSRF-protected and limited to 20 req
 ## Owner-only link status
 
 PATCH `/api/links/:code/status`: authenticated session + synchronizer CSRF + configured origin validation. Strict body `{ isActive: boolean }`; UPDATE links uses both code and req.user.id. Non-owner, unknown and ownerless legacy links uniformly return 404; unauthenticated/expired session 401, bad CSRF 403, invalid body 400. Repeating the same target state is idempotent. Response contains the existing Link contract plus isActive and status. No owner ID or expiry update is accepted. Public Preview/QR/redirect remain unauthed reads, with disabled redirect denied (410, no events).
+
+## Registration name and confirmation
+
+Create account requires a display name and matching Password/Confirm password fields. The frontend
+checks equality before sending a request; confirmation is not sent or stored. POST `/api/auth/register`
+accepts `{ email, password, displayName? }`, with the same trimmed 1–80 character name validation as
+Profile. Unknown fields and Unicode control/format characters are rejected. The name is stored together
+with the bcrypt password hash and returned in session/login responses. Omitting displayName remains
+supported for existing API clients (empty default); Login continues to accept email/password only.
+No migration is needed because users.display_name already exists.
+
+## Private profile photo
+
+- `PUT /api/auth/avatar`: authenticated + same-origin + X-CSRF-Token; raw image bytes with Content-Type image/jpeg, image/png or image/webp (not multipart). Maximum 2 MiB; only valid still images up to 16,777,216 pixels. Returns `{user}` including nullable `avatarUrl`.
+- `GET /api/auth/avatar?v=<version>`: authenticated user's own photo only, image/webp with Cache-Control no-store and Vary Cookie. Returns 404 if absent; version is a refresh hint, not an account identifier or public grant.
+- `DELETE /api/auth/avatar`: authenticated + CSRF; idempotently clears own photo and returns `{user}` with avatarUrl null.
+- PUT/DELETE share a 20 requests / 15 minutes / IP limiter. Anonymous or expired sessions receive 401; missing CSRF 403; invalid image 400; unsupported MIME 415; oversized body 413; rate limit 429. Errors use the existing sanitized error handler.
+- Client-supplied user IDs never select another account. PostgreSQL stores normalized 256×256 WebP bytes and a random version UUID, bounded by migration 005. No original file name or EXIF is retained. Photos do not appear on public links/Preview. Sharp is a backend dependency; no new environment keys are required.

@@ -12,7 +12,7 @@ export interface Stats {
   totalLinks: number; activeLinks: number; totalClicks: number; todayClicks: number;
   daily: { date: string; clicks: number }[]; timezone: string;
 }
-export interface User { id: string; email: string; displayName: string }
+export interface User { id: string; email: string; displayName: string; avatarUrl: string | null }
 export interface AuthSession { user: User | null; csrfToken: string | null; expiresAt: number | null }
 let csrfToken = '';
 export function clearAuthToken() { csrfToken = ''; }
@@ -32,7 +32,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   // Hosts/proxies can return an HTML error page. Do not expose it or a JSON parser error.
   const body = await response.json().catch(() => { throw new Error(fallback); });
   if (!response.ok) {
-    if (response.status === 401 && (!path.startsWith('/auth/') || path === '/auth/logout')) { clearAuthToken(); window.dispatchEvent(new Event('auth-required')); }
+    if (response.status === 401 && (!path.startsWith('/auth/') || ['/auth/logout', '/auth/profile', '/auth/password', '/auth/avatar'].includes(path))) { clearAuthToken(); window.dispatchEvent(new Event('auth-required')); }
     throw new Error(body.error ?? 'Something went wrong. Please try again.');
   }
   if (typeof body.csrfToken === 'string') csrfToken = body.csrfToken;

@@ -19,9 +19,9 @@ flowchart LR
     P7(("7.0 Owner link status"))
     D1[("D1: Links")]
     D2[("D2: Click Events")]
-    D3[("D3: Users password hashes")]
+    D3[("D3: Users password hashes / private profile photo")]
     D4[("D4: Server sessions")]
-    U -->|"email/password, display name หรือ cookie + CSRF"| P6
+    U -->|"email/password, display name, photo หรือ cookie + CSRF"| P6
     P6 <-->|"hash/compare + current user profile"| D3
     P6 <-->|"สร้าง / ตรวจ expiry / revoke"| D4
     P6 -->|"authenticated owner identity"| P1
@@ -119,6 +119,8 @@ erDiagram
         varchar email UK
         text password_hash "bcrypt cost 12"
         varchar display_name "default empty; max 80"
+        bytea avatar_image "nullable normalized WebP; max 256 KiB"
+        uuid avatar_version "nullable image version"
         timestamptz created_at
     }
     SESSIONS {
