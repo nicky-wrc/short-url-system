@@ -227,3 +227,7 @@ td { font-size: 12px; border-color: var(--border); }
 @media(max-width:620px){.sidebar{display:flex;flex-wrap:wrap;gap:16px}.sidebar nav{width:100%;overflow-x:auto;gap:8px;padding-bottom:4px}.sidebar .nav-item{min-height:44px;white-space:nowrap;flex-shrink:0}.account-nav-label{display:none}.profile-panel,.profile-summary,.overview-actions{padding:24px}.profile-panel .button{width:100%}.topbar-right{min-width:0}.account-email{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 
 @media(max-width:620px){.sidebar nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;overflow:visible;gap:8px;padding:0}.sidebar .nav-item{width:100%;min-height:44px;font-size:11px;padding:8px;justify-content:center}.topbar .service-status{display:none}}
+
+/* Explicit link status actions: confirmed state only, 44px keyboard/touch target. */
+.status-pill.disabled{background:var(--canvas-mid);color:var(--subdued);border:1px solid var(--hairline)}.status-pill.disabled>span{background:var(--subdued)}
+.link-status-button{min-height:44px;margin-top:10px;padding:0 16px;border:1px solid var(--hairline);background:var(--canvas-deep);color:var(--text);white-space:nowrap}.link-status-button:hover:not(:disabled){background:var(--canvas-mid)}.link-status-button:disabled{opacity:.6;cursor:wait}.qr-status{color:var(--subdued)}.qr-status.disabled,.qr-status.expired{color:var(--error)}

@@ -16,6 +16,7 @@ flowchart LR
     P4(("4.0 ประวัติและสถิติ"))
     P5(("5.0 Preview ปลายทาง"))
     P6(("6.0 Register / Login / Logout / Profile / CSRF"))
+    P7(("7.0 Owner link status"))
     D1[("D1: Links")]
     D2[("D2: Click Events")]
     D3[("D3: Users password hashes")]
@@ -25,6 +26,10 @@ flowchart LR
     P6 <-->|"สร้าง / ตรวจ expiry / revoke"| D4
     P6 -->|"authenticated owner identity"| P1
     P6 -->|"authenticated owner identity"| P4
+    P6 -->|"session owner + CSRF"| P7
+    U -->|"code + explicit isActive true/false"| P7
+    P7 <-->|"UPDATE only code + owner_id; preserve expiry/events"| D1
+    P7 -->|"confirmed status / auth or not-found error"| U
     P6 -->|"cookie / token / own profile / error"| U
     U -->|"URL ต้นฉบับ, ชื่อ, alias, expiryPreset หรือ custom expiresAt"| P1
     P1 -->|"ข้อมูลลิงก์ที่ตรวจสอบแล้ว"| D1
@@ -55,21 +60,25 @@ sequenceDiagram
     participant D as PostgreSQL
     participant T as Target website
     B->>A: GET /preview/:code + GET /api/links/:code/preview
-    A->>D: SELECT stored destination and expiry
+    A->>D: SELECT stored destination, expiry and is_active
     D-->>A: Metadata or missing
     A-->>B: Preview UI + metadata (no event)
     Note over B: Render/refresh does not navigate to target
-    B->>A: User presses Continue: GET /:code
-    A->>D: SELECT current link and expiry again
-    alt missing / expired / invalid stored destination
+    B->>A: User presses Continue: GET /api/links/:code/preview (no event)
+    A->>D: Re-read metadata for immediate disabled/expired feedback
+    A-->>B: Current status; stay on Preview if unavailable
+    B->>A: Only active: GET /:code
+    A->>D: BEGIN + SELECT current link FOR SHARE: expiry/is_active
+    alt missing / disabled / expired / invalid stored destination
       A-->>B: 404 / 410 / generic 500 (no event)
     else active HTTP/HTTPS destination
       A->>D: INSERT click_events(link_id)
-      D-->>A: Event stored
+      D-->>A: Event stored + COMMIT
       A-->>B: 302 Location: saved destination
       B->>T: Follow redirect with original query/fragment
     end
     Note over A,D: HEAD validates availability without inserting an event
+    Note over A,D: PATCH status serializes on same row; disabled precedes expiry
 ```
 
 Short URL และ QR เดิมยังใช้ `/:code` โดยตรง หน้า `/preview/:code` เป็นทางเลือกสำหรับแชร์ก่อนเปิด เว็บไซต์ปลายทางไม่ถูกเรียกจาก backend และ ER Diagram ไม่เปลี่ยน
@@ -98,6 +107,7 @@ erDiagram
         timestamptz created_at "default NOW()"
         timestamptz expires_at "nullable"
         bigint owner_id FK "ON DELETE SET NULL"
+        boolean is_active "NOT NULL DEFAULT TRUE"
     }
     CLICK_EVENTS {
         bigint id PK "identity"
@@ -174,12 +184,16 @@ sequenceDiagram
     B->>A: GET /code
     A->>D: SELECT original_url, expires_at WHERE code=$1
     D-->>A: Link data
-    alt missing or expired
+    alt missing, disabled or expired
       A-->>B: 404 or 410 (no click event)
     else active
       A->>D: INSERT click_events(link_id)
-      D-->>A: Event stored
+      D-->>A: Event stored + COMMIT
       A-->>B: 302 + Location + Cache-Control no-store
       B->>T: GET destination URL
     end
 ```
+
+### Link status migration
+
+`004_link_status.sql` adds links.is_active=true for old rows, including ownerless links. Owners PATCH explicit target state; no click events or expiry are rewritten. Disabled is displayed before Expired, then Active. Public QR keeps the same short URL; public Preview metadata indicates unavailable and GET/HEAD redirect returns 410 without Location/event. Redirect holds a share row lock through validation/event commit so status updates are serialized.

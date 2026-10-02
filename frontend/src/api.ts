@@ -1,12 +1,12 @@
 export interface Link {
   id: string; code: string; originalUrl: string; shortUrl: string; title: string;
-  createdAt: string; expiresAt: string | null; clicks: number;
+  createdAt: string; expiresAt: string | null; clicks: number; isActive: boolean; status: 'active' | 'disabled' | 'expired';
 }
 export interface LinkPage { items: Link[]; total: number; page: number; limit: number }
 export interface LinkPreview {
   code: string; title: string; originalUrl: string; destinationHost: string;
   shortUrl: string; previewUrl: string; expiresAt: string | null;
-  status: 'active' | 'expired';
+  isActive: boolean; status: 'active' | 'disabled' | 'expired';
 }
 export interface Stats {
   totalLinks: number; activeLinks: number; totalClicks: number; todayClicks: number;

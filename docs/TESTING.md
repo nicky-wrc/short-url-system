@@ -119,3 +119,25 @@
 30 integration tests passed against the guarded disposable local PostgreSQL database (loopback, `_test`, reset opt-in); no production data reset. New coverage: profile auth/CSRF/validation/strict ownership/persistence; password mismatch, too short/long, unchanged password and extra-ID rejection; all own sessions revoked, old password rejected/new password accepted; other users and existing link/QR/redirect remain usable.
 
 Typecheck and production build passed. Browser QA used a separate local app on port 3112: five distinct menu destinations, profile display-name save and persistence after refresh, create-to-My-links flow, and mobile layout at 390px without document overflow. Password change was verified by HTTP integration tests; it was not submitted through browser UI. No deployment or physical mobile QR scan was performed for this task.
+
+## Owner-only link status (2026-10-02)
+
+Typecheck/build passed and all 33 integration tests passed against guarded local PostgreSQL on port 55432 (`shorturl_test`, explicit reset opt-in), not Supabase. Three new tests cover:
+
+- Explicit true/false is idempotent; owner A can change status. B, anonymous and ownerless legacy attempts cannot change it; invalid/extra body, bad Origin and CSRF are denied. Owner, code, expiry and previous events are preserved.
+- Disabled status wins over expiry consistently in private details/history/CSV/public Preview. GET/HEAD disabled returns 410 without Location/events. QR bytes and decoded short URL stay identical. Re-enable preserves expiry; exact expired boundary still denies redirect. Expired session cannot change status.
+- A real PostgreSQL row-lock race: redirect waits on an in-flight disable transaction, then sees false after commit and records zero events.
+
+Migration test applies 004 to old rows (true), disables one, reapplies migration and verifies false remains; old ownership and prior events survive.
+
+Browser QA (local app port 3113): create → disable → old Preview Continue now shows Disabled without leaving Preview; QR dialog shows unavailable; enable via keyboard → Continue reaches `https://example.com/status-browser-qa?keep=1#fragment` and history increments once. Disable again keeps that prior open. Downloaded CSV file has UTF-8 BOM, matching code and Disabled status with zero opens at export time. At 390px the document does not overflow; the history table scrolls horizontally, and the status button has 44px height and visible keyboard focus. Simulated CSRF invalidation in disposable QA sessions shows an error, restores enabled controls and preserves the actual disabled state; refresh recovers the session token.
+
+Physical QR scan, Excel application opening and public deployment were not performed in this task. Migration 004 has been applied only to the disposable local test database; run `npm run db:migrate` for the application's configured database before starting the new version.
+
+## Dev startup race and origin (2026-10-02)
+
+Reported ECONNREFUSED happened before the API listening log. Read-only checks against the user's running app confirmed `/api/health` and `/api/auth/session` return 200; schema inspection found owner_id, is_active and display_name already present. No Supabase migration or production data reset was performed.
+
+The combined dev command now waits for healthy API/database before Vite, bounds startup to 60 seconds and couples process shutdown. Vite uses localhost:5173 with strictPort, matching the existing AUTH_ORIGIN; 127.0.0.1:5173 would be a different origin. The proxy uses backend PORT, and build remains supported without backend/.env.
+
+Tests: 3 readiness tests + 33 isolated PostgreSQL integration tests passed (36 total), typecheck and build passed. Browser checked `http://localhost:5173`: Login form appeared after session loading and error/warning console log collection was empty. The user's existing dev processes were preserved; restart `npm run dev` to apply changed CLI startup options. Full cold start using the standard ports was not rerun because the user's app currently occupies those ports; delayed/unavailable startup is covered by isolated HTTP tests.

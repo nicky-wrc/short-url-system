@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { pool } from './db.js';
 import { config } from './config.js';
+import { linkStatus } from './link-status.js';
 import { clock } from './clock.js';
 import { CSV_EXPORT_LIMIT, linksCsv } from './csv.js';
 import { sessionMiddleware, passport, expireSession, authRouter, requireAuth, protectWrite } from './auth.js';
@@ -50,7 +51,6 @@ const createSchema = z.object({
   }
 });
 const expiryDurations = { '1h': 3_600_000, '1d': 86_400_000, '7d': 604_800_000 };
-const isExpired = (expiresAt: string | Date | null) => !!expiresAt && new Date(expiresAt).getTime() <= clock.now();
 const searchSchema = z.string().trim().max(120).default('');
 const historyFilter = 'WHERE owner_id = $2 AND (title ILIKE $1 OR original_url ILIKE $1 OR code ILIKE $1)';
 const searchPattern = (q: string) => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
@@ -58,6 +58,7 @@ const searchPattern = (q: string) => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 const shapeLink = (row: Record<string, unknown>) => ({
   id: String(row.id), code: row.code, originalUrl: row.original_url,
   title: row.title, createdAt: row.created_at, expiresAt: row.expires_at,
+  isActive: row.is_active, status: linkStatus(row.is_active, row.expires_at as Date | null, clock.now()),
   clicks: Number(row.clicks ?? 0), shortUrl: `${config.PUBLIC_BASE_URL}/${row.code}`,
 });
 
@@ -122,7 +123,7 @@ app.get('/api/links/export.csv', requireAuth, async (req, res) => {
   const now = clock.now();
   // One statement provides a consistent PostgreSQL snapshot; +1 detects overflow
   // without silently truncating or a separate count/read race.
-  const result = await pool.query(`SELECT l.title, l.original_url, l.code, l.created_at, l.expires_at,
+  const result = await pool.query(`SELECT l.title, l.original_url, l.code, l.created_at, l.expires_at, l.is_active,
     (SELECT COUNT(*) FROM click_events c WHERE c.link_id = l.id) AS clicks
     FROM links l ${historyFilter} ORDER BY created_at DESC, id DESC LIMIT $3`,
     [searchPattern(parsed.data.q), req.user!.id, CSV_EXPORT_LIMIT + 1]);
@@ -136,7 +137,7 @@ app.get('/api/links/export.csv', requireAuth, async (req, res) => {
 
 app.get('/api/stats', requireAuth, async (req, res) => {
   const [links, clicks, daily] = await Promise.all([
-    pool.query('SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE expires_at IS NULL OR expires_at > NOW()) AS active FROM links WHERE owner_id=$1', [req.user!.id]),
+    pool.query('SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_active AND (expires_at IS NULL OR expires_at > NOW())) AS active FROM links WHERE owner_id=$1', [req.user!.id]),
     pool.query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE opened_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS today FROM click_events WHERE link_id IN (SELECT id FROM links WHERE owner_id=$1)", [req.user!.id]),
     pool.query(`SELECT to_char(days.day, 'YYYY-MM-DD') AS date, COUNT(c.id)::int AS clicks
       FROM generate_series((NOW() AT TIME ZONE 'UTC')::date - 6, (NOW() AT TIME ZONE 'UTC')::date, INTERVAL '1 day') AS days(day)
@@ -159,7 +160,7 @@ app.get('/api/links/:code/qr', async (req, res) => {
 // Read stored metadata only; never fetch the destination or record an opening.
 app.get('/api/links/:code/preview', async (req, res) => {
   if (!codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
-  const found = await pool.query('SELECT code, title, original_url, expires_at FROM links WHERE code = $1', [req.params.code]);
+  const found = await pool.query('SELECT code, title, original_url, expires_at, is_active FROM links WHERE code = $1', [req.params.code]);
   const link = found.rows[0];
   if (!link) { res.status(404).json({ error: 'Link not found.' }); return; }
   res.json({
@@ -168,7 +169,7 @@ app.get('/api/links/:code/preview', async (req, res) => {
     shortUrl: `${config.PUBLIC_BASE_URL}/${link.code}`,
     previewUrl: `${config.PUBLIC_BASE_URL}/preview/${link.code}`,
     expiresAt: link.expires_at,
-    status: isExpired(link.expires_at) ? 'expired' : 'active',
+    isActive: link.is_active, status: linkStatus(link.is_active, link.expires_at, clock.now()),
   });
 });
 
@@ -177,6 +178,16 @@ app.get('/api/links/:code', requireAuth, async (req, res) => {
   const found = await pool.query('SELECT l.*, (SELECT COUNT(*) FROM click_events c WHERE c.link_id=l.id) AS clicks FROM links l WHERE code=$1 AND owner_id=$2', [req.params.code, req.user!.id]);
   if (!found.rowCount) { res.status(404).json({ error: 'Link not found.' }); return; }
   res.json(shapeLink(found.rows[0]));
+});
+// Explicit target state makes retries idempotent. Owner filter is part of the UPDATE.
+app.patch('/api/links/:code/status', requireAuth, protectWrite, async (req, res) => {
+  if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
+  const parsed = z.object({ isActive: z.boolean() }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Send only isActive as true or false.' }); return; }
+  const result = await pool.query(`UPDATE links SET is_active=$1 WHERE code=$2 AND owner_id=$3
+    RETURNING links.*, (SELECT COUNT(*) FROM click_events c WHERE c.link_id=links.id) AS clicks`, [parsed.data.isActive, req.params.code, req.user!.id]);
+  if (!result.rowCount) { res.status(404).json({ error: 'Link not found.' }); return; }
+  res.json(shapeLink(result.rows[0]));
 });
 app.use('/api', (_req, res) => { res.status(404).json({ error: 'API route not found.' }); });
 
@@ -191,9 +202,9 @@ app.get('/preview/:code', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   let status = 404;
   if (codePattern.test(req.params.code)) {
-    const result = await pool.query('SELECT expires_at FROM links WHERE code = $1', [req.params.code]);
+    const result = await pool.query('SELECT expires_at, is_active FROM links WHERE code = $1', [req.params.code]);
     const link = result.rows[0];
-    if (link) status = isExpired(link.expires_at) ? 410 : 200;
+    if (link) status = linkStatus(link.is_active, link.expires_at, clock.now()) === 'active' ? 200 : 410;
   }
   if (existsSync(frontend)) res.status(status).sendFile(`${frontend}/index.html`);
   else res.status(503).type('text').send('Build the frontend to view link previews.');
@@ -202,15 +213,24 @@ app.get('/preview/:code', async (req, res) => {
 app.get('/:code', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!codePattern.test(req.params.code)) { res.status(404).type('text').send('This short link does not exist.'); return; }
-  const result = await pool.query('SELECT id, original_url, expires_at FROM links WHERE code = $1', [req.params.code]);
-  const link = result.rows[0];
-  if (!link) { res.status(404).type('text').send('This short link does not exist.'); return; }
-  if (isExpired(link.expires_at)) { res.status(410).type('text').send('This short link has expired.'); return; }
-  // Protect redirects even if legacy/imported records bypassed creation validation.
-  parseHttpDestination(link.original_url);
-  // HEAD checks availability, but does not count as an opening. Every successful GET is recorded.
-  if (req.method === 'GET') await pool.query('INSERT INTO click_events (link_id) VALUES ($1)', [link.id]);
-  res.redirect(302, link.original_url);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Share lock serializes status updates with validation + event creation.
+    const result = await client.query('SELECT id, original_url, expires_at, is_active FROM links WHERE code = $1 FOR SHARE', [req.params.code]);
+    const link = result.rows[0];
+    if (!link) { await client.query('ROLLBACK'); res.status(404).type('text').send('This short link does not exist.'); return; }
+    const status = linkStatus(link.is_active, link.expires_at, clock.now());
+    if (status !== 'active') {
+      await client.query('ROLLBACK');
+      res.status(410).type('text').send(status === 'disabled' ? 'This short link has been disabled by its owner.' : 'This short link has expired.'); return;
+    }
+    parseHttpDestination(link.original_url);
+    if (req.method === 'GET') await client.query('INSERT INTO click_events (link_id) VALUES ($1)', [link.id]);
+    await client.query('COMMIT');
+    res.redirect(302, link.original_url);
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
 });
 app.use((_req, res) => { res.status(404).type('text').send('Page not found.'); });
 

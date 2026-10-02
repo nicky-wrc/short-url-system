@@ -33,7 +33,7 @@ GitHub Actions workflow จะรัน typecheck/build/integration tests ด้
 - ฟีเจอร์เสริม: ชื่อกำกับลิงก์, custom alias, วันหมดอายุ (410 เมื่อหมดอายุ)
 - Validation ที่ server, parameterized SQL, Helmet headers, rate limit การสร้าง 30 ครั้ง/นาที/IP และไม่เก็บ IP หรือ User-Agent
 
-**ขอบเขต:** Login จำเป็นสำหรับสร้างลิงก์และ My links ประวัติ คำค้น สถิติ และ CSV แสดงเฉพาะเจ้าของที่ backend ตรวจสิทธิ์ Short URL/Preview/QR ยังเปิดสาธารณะได้ ผู้มี code ดู title, URL เต็ม และ expiry ผ่าน Preview ได้ จึงอย่าใส่ URL ที่มี token/secret ลิงก์เก่า owner_id=NULL ยังเปิด/สแกนได้แต่ไม่ปรากฏใน My links หรืออ้างสิทธิ์โดยบัญชีใหม่ จำนวนเปิดคือทุก successful GET รวม repeat visits และ bot ไม่ใช่จำนวนคนที่ไม่ซ้ำ HEAD/QR preview/expired/missing link ไม่นับเป็นการเปิด
+**ขอบเขต:** Login จำเป็นสำหรับสร้างลิงก์และ My links ประวัติ คำค้น สถิติ และ CSV แสดงเฉพาะเจ้าของที่ backend ตรวจสิทธิ์ Short URL/Preview/QR ยังเปิดสาธารณะได้ ผู้มี code ดู title, URL เต็ม และ expiry ผ่าน Preview ได้ จึงอย่าใส่ URL ที่มี token/secret ลิงก์เก่า owner_id=NULL ยังเปิด/สแกนได้แต่ไม่ปรากฏใน My links หรืออ้างสิทธิ์โดยบัญชีใหม่ จำนวนเปิดคือทุก successful GET รวม repeat visits และ bot ไม่ใช่จำนวนคนที่ไม่ซ้ำ HEAD/QR preview/disabled/expired/missing link ไม่นับเป็นการเปิด
 
 ## เริ่มต้นในเครื่อง
 
@@ -127,7 +127,7 @@ Integration tests ใช้ PostgreSQL จริงผ่าน `TEST_DATABASE_U
 
 Tests ยังถอดรหัส QR กลับเป็น short URL และตรวจ rate limit + `Retry-After`
 
-Suite ปัจจุบันมี 28 tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา
+Suite ปัจจุบันมี 33 tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา
 
 ## Preview และการนับเปิด
 
@@ -136,7 +136,7 @@ Suite ปัจจุบันมี 28 tests รวม Preview/refresh/QR ไ�
 - Continue ตรวจ expiry ในหน้าเพื่อแสดงสถานะ และ backend อ่านสถานะปัจจุบันอีกครั้งก่อนเขียน event แล้วตอบ 302 เก็บ query/fragment ของปลายทางเดิม ไม่รับ query มาทับ destination
 - หน้าจอล็อกการกด Continue ซ้ำระหว่างนำทาง หนึ่ง GET ที่ผ่านการตรวจและบันทึกสำเร็จ = หนึ่ง event ไม่ใช่ unique visitor; การเปิด short URL แยกอีกครั้งยังนับตามนิยามเดิม HEAD, missing, expired, Preview และ QR generation/download ไม่นับ
 - แสดง hostname จาก `URL.hostname` (ASCII/punycode ไม่รวม port) และ URL เต็มเป็นข้อความที่ตัดบรรทัดได้ ไม่มี HTML จาก title/URL, iframe หรือการ fetch/โหลด assets ปลายทางอัตโนมัติ Preview ไม่ใช่การตรวจ malware/phishing
-- ระบบยังไม่มีสถานะ disabled หรือ endpoint สำหรับ disable จึงไม่อ้างว่าทดสอบสถานะนี้แล้ว
+- เจ้าของเปิด/ปิดลิงก์ได้ผ่าน API ที่ตรวจ session, ownership และ CSRF; disabled ไม่ redirect และไม่เพิ่ม event
 
 เช็กรายการทดสอบด้วยตนเองและข้อจำกัดใน [TESTING.md](docs/TESTING.md)
 
@@ -176,7 +176,7 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 `GET /api/links/export.csv?q=keyword` รับ `q` string ไม่เกิน 120 ตัวอักษร (trim) เงื่อนไขเดียวกับประวัติ: ค้น title, original URL หรือ code แบบ case-insensitive และค้น `%`, `_`, `\` เป็นอักขระจริง ไม่ใช่ wildcard Query อื่นหรือ q หลายค่าตอบ 400
 
 - เรียง `created_at DESC, id DESC` คงที่ อ่านข้อมูลกับจำนวน event ใน PostgreSQL statement เดียว ส่งออกได้สูงสุด **10,000 รายการ** หากเกินตอบ **413 JSON** ให้ลดคำค้น ไม่ส่งไฟล์บางส่วน
-- มี 7 คอลัมน์: ชื่อลิงก์, URL ต้นฉบับ, Short URL, วันที่สร้าง (UTC), วันหมดอายุ (UTC), สถานะ (`Active`/`Expired`) และจำนวนครั้งที่เปิด ไม่ส่ง id, secrets หรือข้อมูลฐานข้อมูลภายใน
+- มี 7 คอลัมน์: ชื่อลิงก์, URL ต้นฉบับ, Short URL, วันที่สร้าง (UTC), วันหมดอายุ (UTC), สถานะ (`Active`/`Disabled`/`Expired`) และจำนวนครั้งที่เปิด ไม่ส่ง id, secrets หรือข้อมูลฐานข้อมูลภายใน
 - วันที่เป็น ISO 8601 UTC ลงท้าย `Z`; expiry ว่างเมื่อไม่หมดอายุ สถานะประเมินจากเวลา backend ตอนเริ่ม export โดย `now >= expiresAt` เป็น Expired จำนวนครั้งที่เปิดเป็นตัวเลข decimal ไม่ใส่ apostrophe หรือ quote
 - รูปแบบ UTF-8 พร้อม BOM, คั่น comma, จบแถว CRLF, quote ข้อความและเพิ่ม double quote เมื่อมี `"` รองรับ comma/newline ใน cell
 - ป้องกัน formula injection โดยเติม apostrophe ที่จุดเริ่มต้นของ text cell เมื่อพบ `=`, `+`, `-`, `@` หลัง whitespace/Unicode separator/control/format characters; ข้อมูลข้อความเสี่ยงใน CSV จึงอาจมี apostrophe เพิ่มจากต้นฉบับ การ quote อย่างเดียวไม่ใช่การป้องกัน
@@ -195,8 +195,8 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 | GET | `/api/links/:code` | รายละเอียด/จำนวนคลิกเฉพาะเจ้าของ; ของผู้อื่น: 404, anonymous: 401 |
 | GET | `/api/links/:code/qr` | QR PNG; เพิ่ม `?download=1` เพื่อดาวน์โหลด |
 | GET | `/api/links/:code/preview` | Metadata ปลายทางและ active/expired; ไม่พบ: 404; ไม่นับเปิด |
-| GET | `/preview/:code` | หน้า Preview: 200 active, 404 missing, 410 expired; ไม่นับเปิด |
-| GET | `/:code` | 302 redirect, 404 ไม่พบ, 410 หมดอายุ |
+| GET | `/preview/:code` | หน้า Preview: 200 active, 404 missing, 410 disabled/expired; ไม่นับเปิด |
+| GET | `/:code` | 302 redirect, 404 ไม่พบ, 410 ปิดใช้งานหรือหมดอายุ |
 | HEAD | `/:code` | ตรวจปลายทางโดยไม่นับเปิด |
 
 ตัวอย่าง request:
@@ -279,3 +279,29 @@ Profile แก้ชื่อที่แสดงได้ 1–80 ตัวอ�
 | POST /api/auth/password | ต้อง Login + CSRF; `{ "currentPassword": "...", "newPassword": "..." }`; รหัสต้องต่างกัน 10+ ตัวอักษร ไม่เกิน 72 UTF-8 bytes; จำกัด 20 ครั้ง/15 นาที/IP; สำเร็จ 204 และให้ Login ใหม่ |
 
 เปลี่ยนรหัสตรวจ bcrypt hash ของรหัสเดิมใน transaction พร้อมล็อกแถวสมาชิก อัปเดต hash ใหม่และลบ session ทุกเครื่องของเจ้าของเท่านั้น จากนั้นล้าง cookie ไม่เปลี่ยนเจ้าของลิงก์หรือสถิติ ไม่เพิ่ม email change, password reset, social login, avatar upload หรือ workspace ร่วมในรอบนี้
+
+## เปิด / ปิดลิงก์ของเจ้าของ
+
+ก่อนรันเวอร์ชันนี้ หยุด backend แล้วรัน `npm run db:migrate` และ `npm run dev` Migration `004_link_status.sql` เพิ่ม `links.is_active BOOLEAN NOT NULL DEFAULT TRUE` ลิงก์เดิม รวม owner_id=NULL เปิดใช้งานตามเดิม ไม่เปลี่ยนเจ้าของ code expiry หรือ click events รัน migration ซ้ำไม่เปิดกลับลิงก์ที่เคยปิด
+
+`PATCH /api/links/:code/status` ต้อง Login และ X-CSRF-Token รับเฉพาะ `{ "isActive": false }` หรือ `{ "isActive": true }` ไม่รับ toggle/owner_id/expiry ค่าเดิมส่งซ้ำได้สถานะเดิม UPDATE มี `code AND owner_id` กำกับเสมอ: 200 ส่ง Link พร้อม isActive/status/counts, 400 body ไม่ถูกต้อง, 401 ไม่มี session/หมดอายุ, 403 CSRF/origin ไม่ผ่าน, 404 code ไม่พบ/ไม่ใช่เจ้าของ/legacy ไม่มีเจ้าของ โดยไม่เปิดเผยว่าเป็นลิงก์ของใคร
+
+ลำดับสถานะทุกหน้าคือ Disabled ก่อน Expired ก่อน Active (`isActive=false` ชนะ expiry) การ enable ไม่เปลี่ยน expiresAt: ลิงก์หมดอายุยังเป็น Expired และตอบ 410 ประวัติ CSV รายละเอียด private และ Preview ใช้ลำดับเดียวกัน Active links ในสถิตินับเฉพาะ is_active=true ที่ยังไม่หมดอายุ แต่ Total opens ยังคงรวม click events เดิม
+
+My links มีปุ่ม Disable link / Enable link พร้อม label แยกตาม code และ Saving… ขณะทำรายการ ป้องกันคำขอซ้ำและไม่แก้สถานะล่วงหน้า เมื่อผิดพลาดแสดง error และอ่านข้อมูลจริงซ้ำ ปุ่มรองรับ keyboard/focus และ touch target อย่างน้อย 44px
+
+Preview metadata ยัง GET 200 เพื่อแสดงรายละเอียดและ status='disabled' แต่หน้า Preview HTTP 410 และไม่มีปุ่ม Continue ที่ใช้งานได้ Redirect GET/HEAD ตอบ 410 ข้อความว่าเจ้าของปิดลิงก์ ไม่มี Location/event QR PNG/payload/URL เดิมยังดาวน์โหลดได้; สแกนไป endpoint เดิมแล้วถูกปฏิเสธ การ enable ลิงก์ที่ยังไม่หมดอายุใช้ URL/QR เดิมได้
+
+Redirect ใช้ transaction และ SELECT FOR SHARE เพื่อตรวจสถานะล่าสุดและเขียน event ก่อน commit ขณะที่ UPDATE สถานะต้องรอ row lock เดียวกัน คำขอที่ตรวจและบันทึกก่อน disable อาจส่ง response เสร็จภายหลังได้ แต่คำขอที่ตรวจหลัง disable commit จะไม่ redirect/นับคลิก ไม่มีการ fetch เว็บไซต์ปลายทาง
+
+ปุ่ม Continue อ่าน Preview metadata ล่าสุดอีกครั้งเมื่อผู้ใช้กด (ไม่นับคลิก) เพื่อแสดง Disabled/Expired บน Preview เก่าได้ทันที จากนั้นเฉพาะสถานะ active จึงนำทางไป Short URL เดิม Backend Redirect ยังตรวจสถานะซ้ำ; network/status-check error แสดงในหน้าและให้ลองใหม่ได้
+
+## Dev startup / ECONNREFUSED
+
+`npm run dev` starts the API first while the web process waits for `/api/health` to report both status=ok and database=connected (maximum 60 seconds; individual requests are bounded). This avoids `/api/auth/session` hitting the proxy before API port 3000 is listening. A startup failure stops the paired dev processes instead of leaving a frontend that cannot reach its backend.
+
+Open **http://localhost:5173**, matching `AUTH_ORIGIN=http://localhost:5173`. localhost and 127.0.0.1 are different origins. Vite now explicitly uses localhost, port 5173 and strictPort, so an occupied port reports an error instead of silently changing to 5174 and failing CSRF origin validation. Its API proxy follows backend PORT; backend variables/secrets are not exposed to the client bundle. Building without backend/.env remains supported.
+
+After updating these scripts, press Ctrl+C in the old dev terminal and run `npm run dev` again. When running API/frontend separately, wait for the API listening message before opening the frontend. `npm run dev:web` includes the readiness wait, while `npm run dev -w frontend` starts only Vite.
+
+`npm test` runs 3 local HTTP readiness tests plus 33 PostgreSQL integration tests (36 total). Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes, and no new dependencies are required.

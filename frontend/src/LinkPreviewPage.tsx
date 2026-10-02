@@ -9,6 +9,7 @@ export function LinkPreviewPage({ code }: { code: string }) {
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState('');
+  const [continueError, setContinueError] = useState('');
   const [now, setNow] = useState(Date.now());
   const [continuing, setContinuing] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -17,7 +18,7 @@ export function LinkPreviewPage({ code }: { code: string }) {
 
   useEffect(() => {
     let current = true;
-    setLoading(true); setError(''); setLink(null); setNotice('');
+    setLoading(true); setError(''); setLink(null); setNotice(''); setContinueError('');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     void api<LinkPreview>(`/links/${encodeURIComponent(code)}/preview`, { signal: controller.signal })
@@ -40,15 +41,28 @@ export function LinkPreviewPage({ code }: { code: string }) {
     return () => window.removeEventListener('pageshow', onPageShow);
   }, []);
 
+  const disabled = link?.isActive === false || link?.status === 'disabled';
   const expired = link?.status === 'expired' || (!!link?.expiresAt && new Date(link.expiresAt).getTime() <= now);
-  function continueToWebsite(event: MouseEvent<HTMLAnchorElement>) {
-    if (!link || continueLock.current) { event.preventDefault(); return; }
-    // Recheck locally for UX; the redirect backend remains authoritative.
-    if (link.status === 'expired' || (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now())) {
-      event.preventDefault(); setNow(Date.now()); return;
-    }
-    continueLock.current = true; setContinuing(true);
-    // Let the browser follow href normally; never navigate directly to originalUrl.
+  async function continueToWebsite(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    if (!link || continueLock.current) return;
+    if (!link.isActive || link.status === 'disabled' || link.status === 'expired' || (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now())) { setNow(Date.now()); return; }
+    continueLock.current = true; setContinuing(true); setNotice(''); setContinueError('');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      // Metadata reads never count. This gives stale previews immediate feedback;
+      // the real redirect still rechecks under a row lock before recording an event.
+      const latest = await api<LinkPreview>(`/links/${encodeURIComponent(code)}/preview`, { signal: controller.signal });
+      setLink(latest); setNow(Date.now());
+      if (!latest.isActive || latest.status !== 'active' || (latest.expiresAt && new Date(latest.expiresAt).getTime() <= Date.now())) {
+        continueLock.current = false; setContinuing(false); return;
+      }
+      window.location.assign(latest.shortUrl);
+    } catch (reason) {
+      continueLock.current = false; setContinuing(false);
+      setContinueError((reason as Error).name === 'AbortError' ? 'Status check timed out. Please try again.' : (reason as Error).message);
+    } finally { clearTimeout(timeout); }
   }
   async function copyPreview() {
     if (!link || copyLock.current) return;
@@ -68,11 +82,12 @@ export function LinkPreviewPage({ code }: { code: string }) {
           <div className="preview-error" role="alert"><h2>Preview unavailable</h2><p>{error}</p><button className="button preview-secondary" onClick={() => setAttempt(attempt + 1)}>Try again</button></div> : link && <>
             {link.title && <h2 className="preview-title">{link.title}</h2>}
             <div className="preview-destination"><Globe2 size={24} /><div><span>DESTINATION DOMAIN</span><strong>{link.destinationHost}</strong></div></div>
-            <dl className="preview-details"><div><dt>Full destination URL</dt><dd>{link.originalUrl}</dd></div><div><dt>Status</dt><dd>{expired ? 'Expired — this link will not redirect' : 'Active'}</dd></div><div><dt>Expires</dt><dd>{formatExpiry(link.expiresAt)}</dd></div></dl>
+            <dl className="preview-details"><div><dt>Full destination URL</dt><dd>{link.originalUrl}</dd></div><div><dt>Status</dt><dd>{disabled ? 'Disabled — the owner has paused this link' : expired ? 'Expired — this link will not redirect' : 'Active'}</dd></div><div><dt>Expires</dt><dd>{formatExpiry(link.expiresAt)}</dd></div></dl>
             <p className="preview-disclaimer">This shows the saved destination, not a safety rating. Only continue if you recognize and trust this website.</p>
-            <div className="preview-actions">{expired ? <button className="button primary" disabled>Link expired</button> : <a className="button primary preview-continue" href={link.shortUrl} rel="noreferrer" aria-disabled={continuing} tabIndex={continuing ? -1 : undefined} onClick={continueToWebsite}>{continuing ? <>Opening website…<Loader2 className="spin" size={17} /></> : <>Continue to website <ArrowUpRight size={17} /></>}</a>}<button className="button preview-secondary" disabled={copying || continuing} onClick={() => void copyPreview()}><Copy size={17} />{copying ? 'Copying…' : 'Copy preview link'}</button></div>
+            <div className="preview-actions">{disabled || expired ? <button className="button primary" disabled>{disabled ? 'Link disabled' : 'Link expired'}</button> : <a className="button primary preview-continue" href={link.shortUrl} rel="noreferrer" aria-disabled={continuing} tabIndex={continuing ? -1 : undefined} onClick={event => void continueToWebsite(event)}>{continuing ? <>Opening website…<Loader2 className="spin" size={17} /></> : <>Continue to website <ArrowUpRight size={17} /></>}</a>}<button className="button preview-secondary" disabled={copying || continuing} onClick={() => void copyPreview()}><Copy size={17} />{copying ? 'Copying…' : 'Copy preview link'}</button></div>
+            {continueError && <p className="form-error" role="alert">{continueError}</p>}
             {continuing && <p className="preview-loading" role="status">Opening the short link and checking its current status…</p>}
-            <p className="preview-count-note">Viewing this preview does not count as an opening. Continuing uses the short link and records an opening.</p>
+            <p className="preview-count-note">Viewing this preview and checking status do not count as an opening. Only a successful redirect records an opening.</p>
             <p className="preview-share-address">{link.previewUrl}</p>
           </>}
         {notice && <p className="preview-notice" role="status"><Check size={16} />{notice}</p>}

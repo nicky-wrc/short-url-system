@@ -499,6 +499,9 @@ test('auth migration preserves old links/events and leaves legacy ownership uncl
     const profileSql = await readFile(new URL('../migrations/003_profile.sql', import.meta.url), 'utf8');
     await client.query(profileSql); await client.query(profileSql);
     assert.deepEqual((await client.query('SELECT email,password_hash,display_name FROM users')).rows[0], { email: 'legacy-owner@example.test', password_hash: 'legacy-hash', display_name: '' });
+    const statusSql = await readFile(new URL('../migrations/004_link_status.sql', import.meta.url), 'utf8');
+    await client.query(statusSql); assert.equal((await client.query('SELECT is_active FROM links')).rows[0].is_active,true); await client.query('UPDATE links SET is_active=false'); await client.query(statusSql);
+    assert.equal((await client.query('SELECT is_active FROM links')).rows[0].is_active,false);
     const row = (await client.query('SELECT code, original_url, owner_id, (SELECT COUNT(*)::int FROM click_events) AS events FROM links')).rows[0];
     assert.deepEqual(row, { code: 'old-link', original_url: 'https://example.com/old', owner_id: null, events: 1 });
   } finally { await client.query('ROLLBACK'); client.release(); }
@@ -551,6 +554,83 @@ test('password change validates current credentials, revokes all own sessions an
   await request(app).get(`/api/links/${made.body.code}/qr`).expect(200);
   await request(app).get(`/${made.body.code}`).expect(302).expect('Location', 'https://example.com/password-change?keep=1#frag');
   assert.ok(logged.body.user.id === a.user.id);
+});
+
+test('owner-only explicit link status preserves QR, opens and ownership; disabled flows never count', async () => {
+  const a = await account('status-a@example.test'); const b = await account('status-b@example.test');
+  const originalUrl = 'https://example.com/status?keep=1#fragment';
+  const made = (await a.agent.post('/api/links').set('X-CSRF-Token', a.token).send({ originalUrl, title: 'Status link' }).expect(201)).body;
+  assert.equal(made.isActive, true); assert.equal(made.status, 'active');
+  const patch = (value: unknown) => a.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token', a.token).send(value as object);
+  const qrBefore = await request(app).get(`/api/links/${made.code}/qr`).expect(200);
+  const previewBefore = await request(app).get(`/api/links/${made.code}/preview`).expect(200);
+  await request(app).get(`/${made.code}`).expect(302).expect('Location', originalUrl);
+  await request(app).patch(`/api/links/${made.code}/status`).send({ isActive: false }).expect(401);
+  await b.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token', b.token).send({ isActive: false }).expect(404);
+  await a.agent.patch(`/api/links/${made.code}/status`).send({ isActive: false }).expect(403);
+  await a.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token', b.token).send({ isActive: false }).expect(403);
+  await a.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token', a.token).set('Origin', 'https://evil.example').send({ isActive: false }).expect(403);
+  for (const body of [{}, { isActive: 'false' }, { isActive: 0 }, { isActive: null }, { isActive: true, owner_id: b.user.id }, { toggle: true }]) await patch(body).expect(400);
+  const unchanged = (await pool.query('SELECT is_active,owner_id FROM links WHERE id=$1',[made.id])).rows[0];
+  assert.equal(unchanged.is_active,true); assert.equal(String(unchanged.owner_id),a.user.id);
+  for (let i=0;i<2;i++) { const disabled = await patch({ isActive: false }).expect(200); assert.equal(disabled.body.status,'disabled'); assert.equal(disabled.body.clicks,1); }
+  const preview = await request(app).get(`/api/links/${made.code}/preview`).expect(200);
+  assert.equal(preview.body.status,'disabled'); assert.equal(preview.body.isActive,false);
+  await request(app).get(`/preview/${made.code}`).expect(410);
+  for (const method of ['get','head'] as const) { const result = await request(app)[method](previewBefore.body.shortUrl.replace('http://localhost:3000','')).expect(410); assert.equal(result.headers.location,undefined); }
+  const qrAfter = await request(app).get(`/api/links/${made.code}/qr?download=1`).expect(200); assert.deepEqual(qrAfter.body,qrBefore.body);
+  const png = PNG.sync.read(qrAfter.body); assert.equal(jsQR(new Uint8ClampedArray(png.data),png.width,png.height)?.data,made.shortUrl);
+  const detail = (await a.agent.get(`/api/links/${made.code}`).expect(200)).body; assert.equal(detail.status,'disabled'); assert.equal(detail.clicks,1);
+  const history = (await a.agent.get('/api/links?q=Status%20link').expect(200)).body; assert.equal(history.items[0].status,'disabled');
+  const csv = parseCsv((await a.agent.get('/api/links/export.csv?q=Status%20link').expect(200)).text); assert.equal(csv[1][5],'Disabled'); assert.equal(csv[1][6],'1');
+  const stats = (await a.agent.get('/api/stats').expect(200)).body; assert.equal(stats.activeLinks,0); assert.equal(stats.totalClicks,1);
+  for (let i=0;i<2;i++) { const enabled = await patch({ isActive: true }).expect(200); assert.equal(enabled.body.status,'active'); assert.equal(enabled.body.shortUrl,made.shortUrl); assert.equal(enabled.body.expiresAt,made.expiresAt); }
+  await request(app).get(previewBefore.body.shortUrl.replace('http://localhost:3000','')).expect(302).expect('Location',originalUrl);
+  assert.equal((await a.agent.get(`/api/links/${made.code}`).expect(200)).body.clicks,2);
+  const orphan = (await pool.query("INSERT INTO links(code,original_url) VALUES('status-orphan','https://example.com/legacy') RETURNING id")).rows[0];
+  await a.agent.patch('/api/links/status-orphan/status').set('X-CSRF-Token',a.token).send({ isActive:false }).expect(404);
+  assert.equal((await pool.query('SELECT is_active FROM links WHERE id=$1',[orphan.id])).rows[0].is_active,true);
+  await request(app).get('/status-orphan').expect(302);
+});
+
+test('expired sessions cannot change status; disabled precedes expiry and enabling never extends it', async t => {
+  const a = await account('status-expiry@example.test');
+  const expiresAt = new Date(clock.now()+60_000).toISOString();
+  const made = (await a.agent.post('/api/links').set('X-CSRF-Token',a.token).send({ originalUrl:'https://example.com/status-expiry', expiresAt }).expect(201)).body;
+  await a.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token',a.token).send({ isActive:false }).expect(200);
+  t.mock.method(clock,'now',()=>new Date(expiresAt).getTime());
+  assert.equal((await request(app).get(`/api/links/${made.code}/preview`).expect(200)).body.status,'disabled');
+  assert.equal(parseCsv((await a.agent.get('/api/links/export.csv?q=status-expiry').expect(200)).text)[1][5],'Disabled');
+  const enabled = await a.agent.patch(`/api/links/${made.code}/status`).set('X-CSRF-Token',a.token).send({ isActive:true }).expect(200);
+  assert.equal(enabled.body.status,'expired'); assert.equal(enabled.body.expiresAt,expiresAt);
+  assert.equal((await request(app).get(`/api/links/${made.code}/preview`).expect(200)).body.status,'expired');
+  assert.equal(parseCsv((await a.agent.get('/api/links/export.csv?q=status-expiry').expect(200)).text)[1][5],'Expired');
+  await request(app).get(`/${made.code}`).expect(410); await request(app).head(`/${made.code}`).expect(410);
+  assert.equal((await a.agent.get(`/api/links/${made.code}`).expect(200)).body.clicks,0);
+  const expiry = (await pool.query("SELECT (sess->>'authExpiresAt')::bigint AS expires FROM sessions WHERE sess->'passport'->>'user'=$1",[a.user.id])).rows[0].expires;
+  t.mock.method(clock,'now',()=>Number(expiry));
+  await request(app).patch(`/api/links/${made.code}/status`).set('Cookie',a.cookie).set('X-CSRF-Token',a.token).send({ isActive:false }).expect(401);
+  assert.equal((await pool.query('SELECT is_active FROM links WHERE id=$1',[made.id])).rows[0].is_active,true);
+});
+
+test('redirect waits for an in-flight status update and never records after a committed disable', async () => {
+  const made = (await signedRequest().post('/api/links').send({ originalUrl:'https://example.com/status-race' }).expect(201)).body;
+  const client = await pool.connect();
+  let redirect: Promise<request.Response> | undefined;
+  try {
+    await client.query('BEGIN'); await client.query('UPDATE links SET is_active=false WHERE id=$1',[made.id]);
+    redirect = request(app).get(`/${made.code}`).then(value=>value);
+    // Wait for PostgreSQL to confirm the real request is blocked on the row lock.
+    let blocked = false;
+    for (let i=0;i<100;i++) {
+      const rows = await pool.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id, original_url, expires_at, is_active FROM links%'");
+      if (rows.rowCount) { blocked=true; break; }
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.ok(blocked,'redirect must acquire a share lock before deciding/counting');
+    await client.query('COMMIT'); const result = await redirect; assert.equal(result.status,410); assert.equal(result.headers.location,undefined);
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events WHERE link_id=$1',[made.id])).rows[0].n,0);
+  } finally { await client.query('ROLLBACK'); client.release(); if(redirect) await redirect; }
 });
 
 test('login and register have bounded request rates', async () => {
