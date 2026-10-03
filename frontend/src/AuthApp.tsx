@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle';
 import MorphLoading from './components/ui/morph-loading';
 import { TextScrollAnimation } from './components/ui/text-scroll-animation';
 import { InteractiveHoverButton } from './components/ui/interactive-hover-button';
@@ -87,7 +88,7 @@ export function AuthApp() {
     setPassword(''); setConfirmation(''); setDisplayName(''); setShowPassword(false); setShowConfirmation(false);
   };
   return <div className="auth-shell auth-experience">
-    <header className="auth-header"><a href="/" className="brand"><span className="brand-icon"><Link2 size={23} /></span>linkstudio.</a><span className="auth-header-note">YOUR PERSONAL LINK WORKSPACE</span></header>
+    <header className="auth-header"><a href="/" className="brand"><span className="brand-icon"><Link2 size={23} /></span>linkstudio.</a><div className="header-actions auth-header-actions"><span className="auth-header-note">YOUR PERSONAL LINK WORKSPACE</span><ThemeToggle compact /></div></header>
     <main className="auth-main"><section className="panel auth-card" aria-labelledby="auth-title">
       <div className="auth-mark" aria-hidden="true"><Link2 size={28} /></div>
       <span className="section-kicker">{mode === 'login' ? 'WELCOME BACK' : 'MAKE IT YOURS'}</span>

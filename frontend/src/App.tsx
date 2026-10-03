@@ -1,9 +1,10 @@
+import { WorkspaceNavigation, workspacePageLabels, type WorkspacePage } from './WorkspaceNavigation';
 import MorphLoading from './components/ui/morph-loading';
 import { InteractiveHoverButton, InteractiveHoverLink } from './components/ui/interactive-hover-button';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLeft, ChevronRight, Copy, Eye, ExternalLink, Globe2, Link2, Plus, QrCode, Search, Sparkles, Menu, UserRound, Pencil, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLeft, ChevronRight, Copy, Eye, ExternalLink, Globe2, Link2, Plus, QrCode, Search, Sparkles, Pencil, X } from 'lucide-react';
 import { api, type Link, type LinkPage, type Stats, type User, clearAuthToken } from './api';
-import { UserAvatar } from './UserAvatar';
+
 import { ProfilePage } from './ProfilePage';
 import { AssistantChat } from './AssistantChat';
 import { EditLinkDialog, type LinkEdit } from './EditLinkDialog';
@@ -20,17 +21,20 @@ const linkStatus = (link: Link) => !link.isActive ? 'disabled' : expired(link) ?
 const statusLabel = (link: Link) => ({ active: 'Active', disabled: 'Disabled', expired: 'Expired' })[linkStatus(link)];
 
 export function App({ user, onLogout, loggingOut, onUserChange }: { user: User; onLogout: () => void; loggingOut: boolean; onUserChange: (user: User | null) => void }) {
-  type Page = 'overview' | 'create' | 'links' | 'analytics' | 'profile';
-  const pageLabels = { overview: 'Overview', create: 'Create link', links: 'My links', analytics: 'Analytics', profile: 'Profile' };
+    type Page = WorkspacePage;
+  const pageLabels = workspacePageLabels;
   const readPage = (): Page => Object.hasOwn(pageLabels, location.hash.slice(1)) ? location.hash.slice(1) as Page : 'overview';
   const [view, setView] = useState<Page>(readPage);
-  const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => { setMenuOpen(false); }, [view]);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { const close = (e: KeyboardEvent) => { if (e.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus(); } }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, [menuOpen]);
-  useEffect(() => { const changed = () => setView(readPage()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, []);
-  function navigate(page: Page) { location.hash = page; setView(page); window.scrollTo({ top: 0 }); }
-  const pageTitles = pageLabels;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => { const changed = () => { setView(readPage()); window.scrollTo({ top: 0 }); }; window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, []);
+  function navigate(page: Page) {
+    location.hash = page; setView(page); window.scrollTo({ top: 0 });
+    requestAnimationFrame(() => {
+      if (page === 'create') urlInput.current?.focus({ preventScroll: true });
+      else document.querySelector<HTMLElement>('.workspace-content')?.focus({ preventScroll: true });
+    });
+  }
+const pageTitles = pageLabels;
   const descriptions = { overview: 'Your links and recorded opens, in one place.', create: 'Choose a destination and set how long your link stays available.', links: 'Search, share and manage the links you own.', analytics: 'Recorded redirects, not unique visitors. All chart dates use UTC.', profile: 'Manage your personal details and account security.' };
   const [links, setLinks] = useState<LinkPage | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -180,17 +184,11 @@ export function App({ user, onLogout, loggingOut, onUserChange }: { user: User; 
   const totalPages = Math.max(1, Math.ceil((links?.total ?? 0) / 6));
   const maxClicks = Math.max(1, ...(stats?.daily.map(d => d.clicks) ?? []));
 
-  return <div className="app-shell">
-    <aside className="sidebar" data-open={menuOpen}>
-      <div className="brand-row"><a href="#overview" className="brand" aria-label="Link Studio home"><span className="brand-icon"><Link2 size={23} /></span><span>link<span className="brand-light">studio</span><span className="brand-dot">.</span></span></a><InteractiveHoverButton ref={menuButton} className="icon-button mobile-menu" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} aria-controls="workspace-nav" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={22} /> : <Menu size={22} />}</InteractiveHoverButton></div>
-      <nav id="workspace-nav" aria-label="Main navigation">
-        <p className="nav-label">WORKSPACE</p>
-        {(['overview', 'create', 'links', 'analytics'] as const).map(page => { const Icon = page === 'overview' || page === 'analytics' ? BarChart3 : page === 'create' ? Plus : Link2; return <a key={page} href={`#${page}`} aria-current={view === page ? 'page' : undefined} className={view === page ? 'nav-item active' : 'nav-item'} onClick={() => setMenuOpen(false)}><Icon size={19} />{pageLabels[page]}{page === 'links' && <span className="nav-count">{stats?.totalLinks ?? '—'}</span>}</a>; })}
-      </nav>
-      <div className="sidebar-account"><a href="#profile" className={view === 'profile' ? 'nav-item active' : 'nav-item'} onClick={() => setMenuOpen(false)}><UserRound size={19} />Profile</a><div className="workspace"><UserAvatar user={user} /><div><strong title={user.displayName}>{user.displayName || 'My workspace'}</strong><small title={user.email}>{user.email}</small></div></div><InteractiveHoverButton className="button logout-button" onClick={onLogout} disabled={loggingOut}>{loggingOut && <MorphLoading size="sm" />}{loggingOut ? 'Logging out…' : 'Log out'}</InteractiveHoverButton></div>
-    </aside>
-    <div className="main-wrapper">
-      <main>
+    return <div className="app-shell" data-nav-collapsed={sidebarCollapsed}>
+    <WorkspaceNavigation user={user} view={view} totalLinks={stats?.totalLinks} collapsed={sidebarCollapsed}
+      onCollapse={setSidebarCollapsed} onNavigate={navigate} onLogout={onLogout} loggingOut={loggingOut} />
+<div className="main-wrapper">
+      <main key={view} className={`workspace-content workspace-content--${view}`} tabIndex={-1}>
         <section className="page-heading"><div><h1>{pageTitles[view]}</h1><p>{descriptions[view]}</p></div>{view !== 'profile' && view !== 'create' && <InteractiveHoverButton className="button primary heading-button" onClick={focusCreate}><Plus size={17} />New link</InteractiveHoverButton>}</section>
 
         {loadError && <div className="error-banner" role="alert"><span>Unable to load workspace: {loadError}</span><InteractiveHoverButton onClick={() => void refresh()}>Retry</InteractiveHoverButton></div>}

@@ -66,3 +66,30 @@
  --chat-width:460px; --chat-height:620px;
  --chat-pill-radius:999px; --chat-composer-radius:24px;
 }
+
+/* Accent fill stays lime; text/focus need their own contrast in the light theme. */
+:root { --accent-text:var(--accent); --focus:var(--accent); }
+:root {
+  --workspace-detail-width:820px;
+  --sidebar-expanded-width:260px;
+  --sidebar-rail-width:76px;
+  --nav-motion:320ms cubic-bezier(.65,.05,0,1);
+  --page-motion:200ms ease-out;
+}
+:root[data-theme="light"] {
+  color-scheme:light;
+  --canvas:#f5f7f1;
+  --sidebar:#edf0e8;
+  --surface:#ffffff;
+  --hover:#e4e9de;
+  --text:#182110;
+  --muted:#53604e;
+  --border:#ccd3c5;
+  --control-border:#798671;
+  --scrim:rgb(24 33 16 / .35);
+  --accent-text:#476719;
+  --focus:#486b24;
+  --danger:#a52c28;
+  --warning:#815008;
+  --success:#386221;
+}

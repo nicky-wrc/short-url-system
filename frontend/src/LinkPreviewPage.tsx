@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle';
 import MorphLoading from './components/ui/morph-loading';
 import { InteractiveHoverButton, InteractiveHoverLink } from './components/ui/interactive-hover-button';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
@@ -75,7 +76,7 @@ export function LinkPreviewPage({ code }: { code: string }) {
   }
 
   return <div className="preview-shell">
-    <header className="preview-header"><a href="/" className="brand" aria-label="Link Studio home"><span className="brand-icon"><Link2 size={23} /></span><span>link<span className="brand-light">studio</span>.</span></a><span>LINK PREVIEW</span></header>
+    <header className="preview-header"><a href="/" className="brand" aria-label="Link Studio home"><span className="brand-icon"><Link2 size={23} /></span><span>link<span className="brand-light">studio</span>.</span></a><div className="header-actions"><span className="preview-header-note">LINK PREVIEW</span><ThemeToggle compact /></div></header>
     <main className="preview-main">
       <section className="panel preview-card" aria-busy={loading}>
         <span className="section-kicker">CHECK YOUR DESTINATION</span>

@@ -11,11 +11,12 @@
     "build": "npm run build -w frontend && npm run build -w backend",
     "start": "npm run start -w backend",
     "db:migrate": "npm run db:migrate -w backend",
-    "test": "npm run test:dev && npm run test -w backend",
+    "test": "npm run test:dev && npm run test:theme && npm run test -w backend",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w backend",
     "demo:users": "npm run demo:users -w backend",
     "dev:web": "node scripts/wait-api.mjs && npm run dev -w frontend",
-    "test:dev": "node --test scripts/wait-api.test.mjs"
+    "test:dev": "node --test scripts/wait-api.test.mjs",
+    "test:theme": "node --test scripts/theme-init.test.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

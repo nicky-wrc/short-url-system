@@ -4,9 +4,13 @@
 
 **Stack:** React 19 + TypeScript + Vite / Node.js 22 + Express 5 + TypeScript / PostgreSQL 17
 
+**Dark / Light Mode:** สลับได้จาก sidebar บน desktop หรือไอคอนดวงจันทร์/ดวงอาทิตย์ใน header บนมือถือ รวมถึง Login/Register และ Preview ค่าเริ่มต้นเป็น Dark Mode และจดจำใน browser เดิมด้วย `localStorage` (`linkstudio.theme`) แท็บใน origin เดียวกันเปลี่ยนตามกัน ไม่ผูกกับบัญชีและไม่ซิงก์ข้ามอุปกรณ์ หาก browser ปิดการเข้าถึง storage ยังสลับได้จน refresh ปุ่ม primary ใช้เขียวอ่อนเดิมทั้งสองโหมด ส่วนสีข้อความ/focus ปรับให้เหมาะกับพื้นหลัง ตรวจ regression ได้ด้วย `npm run test:theme` (รวมใน `npm test`)
+
 Login/Register ใช้ข้อความแนะนำแบบ CharacterV1 ที่ปรับให้เคลื่อนที่เบา รองรับภาษาไทยและ reduced motion โดยเลือก scroll/entrance ตามระยะเลื่อนจริง ดู [รายละเอียดและผลตรวจ](docs/TEXT-ANIMATION.md)
 
 UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพาะ actions สำคัญ และ system sans-serif ที่อ่านไทยได้ โดยไม่โหลดฟอนต์ภายนอก: `frontend/src/theme.css` เป็น tokens กลาง และ `frontend/src/styles.css` ดูแล layout/states; Overview เน้น recent owned links และข้อมูลจริงจาก API เดิม, mobile/tablet ใช้ navigation แบบเปิด/ปิดและประวัติแบบรายการ ดูผลตรวจและข้อจำกัดที่ [UI verification](docs/UI-VERIFICATION.md)
+
+Daily opens ใน Overview/Analytics และฟอร์ม Create link ใช้พื้นที่กึ่งกลางกว้างสูงสุด 820px ภายใน workspace แถบซ้ายบน desktop ย่อเป็นไอคอนและขยายกลับได้; บนมือถือเป็น drawer ที่ปิดด้วย Escape หรือกดพื้นที่ภายนอกได้ พร้อม focus trap เมนูมี slide/stagger และเปลี่ยนหน้าด้วย entrance สั้น รองรับ `prefers-reduced-motion` โดยไม่เพิ่ม GSAP/Tailwind/shadcn และไม่เปลี่ยน API
 
 | ข้อกำหนด | Implementation / หลักฐาน |
 |---|---|
