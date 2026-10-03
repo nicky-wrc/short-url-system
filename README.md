@@ -20,6 +20,8 @@ GitHub Actions workflow จะรัน typecheck/build/integration tests ด้
 
 ## สิ่งที่ทำได้
 
+- ผู้ช่วย AI สำหรับสมาชิก: ถามวิธีใช้งาน/คิดชื่อลิงก์ พร้อมปุ่มลัดและเลือกอนุญาตส่งเฉพาะยอดรวมของตัวเอง ต้องตั้ง OpenAI API key ฝั่ง Backend ก่อนตอบจริง ดู [ขั้นตอนเปิดใช้และ API contract](docs/AI-ASSISTANT.md)
+
 - สมัครสมาชิก / Login / Logout และ My links ที่ตรวจ ownership บน backend
 
 - สร้าง Short URL ด้วยรหัสสุ่ม 8 ตัวอักษร (48-bit randomness) และ unique constraint ใน PostgreSQL พร้อม retry เมื่อชนกัน
@@ -304,7 +306,7 @@ Open **http://localhost:5173**, matching `AUTH_ORIGIN=http://localhost:5173`. lo
 
 After updating these scripts, press Ctrl+C in the old dev terminal and run `npm run dev` again. When running API/frontend separately, wait for the API listening message before opening the frontend. `npm run dev:web` includes the readiness wait, while `npm run dev -w frontend` starts only Vite.
 
-`npm test` runs 3 local HTTP readiness tests plus 36 PostgreSQL integration tests (39 total). Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes.
+`npm test` runs 3 local HTTP readiness tests plus 45 backend tests (48 total), using isolated PostgreSQL for integration cases and injected provider responses for AI cases. Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes.
 
 ### Profile photo
 

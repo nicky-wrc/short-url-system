@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLef
 import { api, type Link, type LinkPage, type Stats, type User, clearAuthToken } from './api';
 import { UserAvatar } from './UserAvatar';
 import { ProfilePage } from './ProfilePage';
+import { AssistantChat } from './AssistantChat';
 import { formatExpiry, localTimeZone } from './time';
 type ExpiryPreset = 'none' | '1h' | '1d' | '7d' | 'custom';
 
@@ -214,6 +215,7 @@ export function App({ user, onLogout, loggingOut, onUserChange }: { user: User; 
 
       </main>
     </div>
+    {!qr && <AssistantChat />}
     {notice && <div className="toast" role="status"><Check size={17} />{notice}</div>}
     {qr && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setQr(null); }}><div ref={modal} className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title"><InteractiveHoverButton className="icon-button close-modal" aria-label="Close QR code" onClick={() => setQr(null)}><X size={20} /></InteractiveHoverButton><h2 id="qr-title">Share QR code</h2><p>{qr.title || 'Your link, ready to scan and share.'}</p>{qrError ? <div className="qr-failure" role="alert">QR code could not be loaded. Close this dialog and try again.</div> : <img className="qr-image" src={`/api/links/${qr.code}/qr`} alt={`QR code for ${qr.shortUrl}`} onError={() => setQrError(true)} />}<a className="qr-address" href={qr.shortUrl} target="_blank" rel="noreferrer">{qr.shortUrl}</a><p className={`qr-status ${linkStatus(qr)}`} role="status">{statusLabel(qr)}{linkStatus(qr) !== 'active' && ' — this link will not redirect.'}</p><InteractiveHoverLink className="button primary" href={`/api/links/${qr.code}/qr?download=1`} download={`link-${qr.code}.png`}><ArrowDownToLine size={17} />Download QR code</InteractiveHoverLink><p className="qr-caption">PNG · 512 × 512 · Scan with your phone camera</p></div></div>}
   </div>;

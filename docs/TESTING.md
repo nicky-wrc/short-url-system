@@ -1,5 +1,9 @@
 # Verification
 
+## Provider error classification — 2026-10-03
+
+Typecheck, build and all 48 tests passed (45 backend + 3 readiness). Tests use the guarded disposable `shorturl_ui_test` database on loopback port 55432; no Supabase data reset and no real OpenAI calls. The added regression covers credits, organization/project spend limits, usage limits, legacy insufficient quota, throttling, authentication/access failures, unknown codes and oversized error bodies. Provider messages containing dummy secrets never appear in returned errors. Real account billing, key permissions and a successful paid AI response remain unverified; no browser verification was performed for this backend-only error-message change.
+
 ## Automated integration tests
 
 `npm test` ใช้ Express ผ่าน supertest และ PostgreSQL จริง ต้องตั้ง `TEST_DATABASE_URL` ไปฐานข้อมูล loopback แยกชื่อ `_test` และ opt-in `TEST_DATABASE_RESET=true` Tests truncate ตารางก่อนและหลังรัน ปฏิเสธ remote host และ application database เดียวกัน (CI อนุญาตเฉพาะ disposable DB พร้อม `NODE_ENV=test`) มีการจำลอง query failure เฉพาะกรณีตรวจการปิดรายละเอียดใน error response
@@ -162,3 +166,10 @@ Current suite: 3 readiness + 36 PostgreSQL integration tests = 39 passing; typec
 Photo tests cover upload/replace/remove, normalization to WebP 256×256 with EXIF removed, persistence across rename/logout/login, own-only reads/writes even with another user ID in the query, CSRF, anonymous/expired sessions, MIME/signature mismatch, SVG rejection, malformed/empty images, byte and pixel limits, unchanged saved photo after invalid uploads, and idempotent removal.
 
 Browser verification on the local isolated QA database: upload PNG, replace with WebP, refresh and confirm both Profile/sidebar images remain loaded at 256 pixels; reject a fake PNG with visible error and preserve the prior photo. Screenshots inspected at 390, 768 and 1440px; no horizontal overflow. Keyboard Tab reaches Remove photo with a visible solid focus outline. Upload success/error feedback is beside the photo control. Removal and re-login persistence were verified by integration tests. No real personal photo was uploaded. Not deployed or tested on a physical mobile device in this task.
+
+## AI assistant verification (2026-10-03)
+
+- Added 8 assistant regression tests: 44 backend tests + 3 dev readiness tests = 47 passing. Guarded disposable `127.0.0.1:55432/shorturl_ui_test`, explicit reset opt-in; application/Supabase data untouched. The initial run failed because the local test database was stopped; after starting the existing isolated cluster the full suite passed. Tests explicitly blank the real API key before app import.
+- Real PostgreSQL verifies own aggregate totals and UTC expiry boundary, excludes other users and ownerless records, and chat does not change click_events. Tests cover actual mounted missing-key route, auth/CSRF/origin, strict role/owner/model validation, fixed provider URL/server key/store:false/output cap, safe upstream failures, partial/refusal output, timeout, rate limit, concurrency and expired session. Upstream responses are offline contract fixtures, not evidence of real AI quality.
+- Typecheck and normal production build passed. No schema, dependency or link endpoint changes.
+- Real OpenAI key/billing/model access and a real AI answer remain unverified because no key has been configured. Follow docs/AI-ASSISTANT.md after creating a key. No deployment or physical phone test in this task.

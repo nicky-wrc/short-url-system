@@ -12,6 +12,7 @@ import { linkStatus } from './link-status.js';
 import { clock } from './clock.js';
 import { CSV_EXPORT_LIMIT, linksCsv } from './csv.js';
 import { sessionMiddleware, passport, expireSession, authRouter, requireAuth, protectWrite } from './auth.js';
+import { createAssistantRouter } from './assistant.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -23,6 +24,7 @@ app.use(express.json({ limit: '16kb' }));
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use('/api', sessionMiddleware, passport.initialize(), passport.session(), expireSession);
 app.use('/api/auth', authRouter);
+app.use('/api/assistant', createAssistantRouter());
 
 const codePattern = /^[A-Za-z0-9_-]{4,32}$/;
 const reserved = new Set(['api', 'health', 'assets', 'index', 'favicon', 'robots', 'links', 'preview']);

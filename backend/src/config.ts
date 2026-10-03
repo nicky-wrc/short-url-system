@@ -14,6 +14,9 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(8),
   AUTH_ORIGIN: z.url().optional(),
+  // Optional: the rest of Link Studio runs normally without an AI key.
+  OPENAI_API_KEY: z.string().trim().default(''),
+  OPENAI_MODEL: z.string().trim().regex(/^[A-Za-z0-9._-]{1,80}$/).default('gpt-5-mini'),
 });
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) throw new Error(`Invalid environment: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`);

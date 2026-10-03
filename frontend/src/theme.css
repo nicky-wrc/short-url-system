@@ -63,4 +63,6 @@
  --loader-piece-sm:3px; --loader-piece-md:8px; --loader-piece-lg:12px;
  --loader-travel-sm:6px; --loader-travel-md:20px; --loader-travel-lg:30px;
  --loader-duration:2s;
+ --chat-width:460px; --chat-height:620px;
+ --chat-pill-radius:999px; --chat-composer-radius:24px;
 }

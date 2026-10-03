@@ -17,6 +17,8 @@ flowchart LR
     P5(("5.0 Preview ปลายทาง"))
     P6(("6.0 Register / Login / Logout / Profile / CSRF"))
     P7(("7.0 Owner link status"))
+    P8(("8.0 AI assistant: session + CSRF"))
+    AI["OpenAI Responses API"]
     D1[("D1: Links")]
     D2[("D2: Click Events")]
     D3[("D3: Users password hashes / private profile photo")]
@@ -27,6 +29,13 @@ flowchart LR
     P6 -->|"authenticated owner identity"| P1
     P6 -->|"authenticated owner identity"| P4
     P6 -->|"session owner + CSRF"| P7
+    P6 -->|"session owner + CSRF"| P8
+    U -->|"question / recent conversation / optional stats consent"| P8
+    D1 -->|"owned aggregate totals only when opted in"| P8
+    D2 -->|"owned open counts only when opted in; read only"| P8
+    P8 -->|"curated guide + conversation + optional own totals; store:false"| AI
+    AI -->|"plain text response / safe error"| P8
+    P8 -->|"answer or unavailable/limit error; no mutations/events"| U
     U -->|"code + explicit isActive true/false"| P7
     P7 <-->|"UPDATE only code + owner_id; preserve expiry/events"| D1
     P7 -->|"confirmed status / auth or not-found error"| U
@@ -150,9 +159,11 @@ flowchart TB
       Redirect["Redirect: lookup / expiry / record / 302"]
       QR["QR encoder: PNG from public short URL"]
       Preview["Preview: stored destination and status; no click event"]
+      Assistant["AI assistant: private session/CSRF + bounded request"]
     end
     DB[("PostgreSQL: links + click_events + users + sessions")]
     Target["เว็บไซต์ปลายทาง"]
+    AI["OpenAI Responses API: optional server key"]
     Browser <-->|"HTTPS"| Proxy
     Proxy --> Express
     Express --> Static
@@ -163,6 +174,10 @@ flowchart TB
     Express --> Redirect
     Express --> QR
     Express --> Preview
+    Express --> Assistant
+    Auth -->|"authenticated owner"| Assistant
+    Assistant -->|"read own aggregate totals only with consent"| DB
+    Assistant <-->|"HTTPS conversation / answer; key stays on server"| AI
     API <-->|"parameterized SQL via pg pool"| DB
     Redirect <-->|"lookup + insert click event"| DB
     QR -->|"lookup link"| DB

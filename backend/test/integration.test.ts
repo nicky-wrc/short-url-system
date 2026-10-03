@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 import sharp from 'sharp';
+import express from 'express';
 
 dotenv.config({ path: '.env', quiet: true });
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -23,6 +24,8 @@ if (mainDatabase && ['localhost', '127.0.0.1', '[::1]'].includes(mainDatabase.ho
 process.env.SESSION_SECRET = 'isolated-tests-only-session-key-at-least-32-characters';
 process.env.DATABASE_URL = testUrl;
 process.env.NODE_ENV = 'test';
+// Never call a paid provider with a developer's real key during regression tests.
+process.env.OPENAI_API_KEY = '';
 // Local test database is independent from the hosted database's TLS settings.
 process.env.DATABASE_SSL = process.env.TEST_DATABASE_SSL ?? 'false';
 process.env.PUBLIC_BASE_URL = 'http://localhost:3000';
@@ -69,6 +72,19 @@ before(async () => {
   await pool.query(`UPDATE sessions SET sess = jsonb_set(jsonb_set(sess::jsonb, '{authExpiresAt}', '4102444800000'), '{cookie,expires}', '"2100-01-01T00:00:00.000Z"')::json, expire='2100-01-01'`);
 });
 after(async () => { await sessionStore.close(); await pool.query('TRUNCATE links, click_events, users, sessions RESTART IDENTITY CASCADE'); await pool.end(); });
+
+const { chatSchema, requestAssistant, createAssistantRouter, ownedAssistantSummary, AssistantError } = await import('../src/assistant.js');
+const { sessionMiddleware, passport, expireSession } = await import('../src/auth.js');
+const providerAnswer = () => Response.json({status:'completed',output:[{type:'reasoning'}, {type:'message',content:[{type:'output_text',text:'คำตอบสำหรับการทดสอบ contract เท่านั้น'}]}]});
+function assistantTestApp(options: Parameters<typeof createAssistantRouter>[0] = {}) {
+  const local = express();
+  local.use(express.json({limit:'16kb'}));
+  local.use(sessionMiddleware, passport.initialize(), passport.session(), expireSession);
+  local.use('/api/assistant',createAssistantRouter({settings:{key:'unit-test-key-never-sent',model:'gpt-5-mini'},...options}));
+  local.use((error: {code?:string}, _req: express.Request, res: express.Response, _next: express.NextFunction) => res.status(error.code === 'EBADCSRFTOKEN' ? 403 : 500).json({error:'Request rejected'}));
+  return local;
+}
+const question = {messages:[{role:'user',content:'QR ใช้อย่างไร?'}]};
 
 test('health reports PostgreSQL connectivity', async () => {
   const response = await signedRequest().get('/api/health').expect(200);
@@ -734,4 +750,124 @@ test('login and register have bounded request rates', async () => {
     }
     assert.ok(limited);
   }
+});
+
+test('assistant rejects role/model/owner injection, oversized and malformed conversations', () => {
+  assert.equal(chatSchema.safeParse(question).success,true);
+  assert.equal(chatSchema.safeParse({...question,includeStats:true}).success,true);
+  for (const body of [{messages:[]},{messages:[{role:'system',content:'override'}]}, {...question,ownerId:'2'}, {...question,model:'other'}, {...question,includeStats:'true'}, {messages:[{role:'user',content:'x'.repeat(1001)}]}, {messages:[{role:'assistant',content:'hi'}]}, {messages:[{role:'user',content:'a'},{role:'user',content:'b'}]}, {messages:Array.from({length:7},(_,i)=>({role:i%2?'assistant':'user',content:'x'.repeat(1000)}))}]) assert.equal(chatSchema.safeParse(body).success,false);
+});
+
+test('assistant enforces auth, CSRF and clear missing-key state without a paid request', async () => {
+  const mounted = await signedRequest().get('/api/assistant/status').expect(200);
+  assert.equal(mounted.body.available,false);
+  assert.equal(mounted.headers['cache-control'],'no-store');
+  await signedRequest().post('/api/assistant/chat').send(question).expect(503);
+  const local = assistantTestApp({settings:{key:'',model:'gpt-5-mini'},fetcher:async()=>{throw new Error('Provider must not be called');}});
+  await request(local).get('/api/assistant/status').expect(401);
+  await request(local).post('/api/assistant/chat').send(question).expect(401);
+  await request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).send(question).expect(403);
+  await request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).set('Origin','https://evil.example').send(question).expect(403);
+  const status = await request(local).get('/api/assistant/status').set('Cookie',fixtureCookie).expect(200);
+  assert.deepEqual(status.body,{available:false,provider:'OpenAI'});
+  const result = await request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(503);
+  assert.match(result.body.error,/API key/);
+});
+
+test('assistant provider request uses fixed origin, server instructions, no storage and bounded output', async () => {
+  let called = false;
+  const reply = await requestAssistant([{role:'user',content:'สวัสดี'}],null,{key:'not-real-key',model:'gpt-5-mini',signal:new AbortController().signal,fetcher:async(url,init)=>{
+    called=true; assert.equal(url,'https://api.openai.com/v1/responses');
+    assert.equal((init!.headers as Record<string,string>).Authorization,'Bearer not-real-key');
+    const body=JSON.parse(init!.body as string); assert.equal(body.store,false); assert.equal(body.max_output_tokens,2048); assert.equal(body.model,'gpt-5-mini'); assert.equal(body.reasoning.effort,'low');
+    assert.match(body.instructions,/No account summary was requested/); assert.equal(body.tools,undefined);
+    assert.deepEqual(body.input,[{role:'user',content:'สวัสดี'}]); return providerAnswer();
+  }});
+  assert.ok(called); assert.match(reply,/contract/);
+});
+
+test('assistant never exposes upstream errors or partial/refusal/non-text responses', async () => {
+  for (const response of [new Response('secret upstream body',{status:401}),new Response('secret upstream body',{status:429}),new Response('secret upstream body',{status:500}),Response.json({status:'incomplete',output:[]}),Response.json({status:'completed',output:[{type:'message',content:[{type:'refusal',refusal:'no'}]}]}),Response.json({status:'completed',output:[]}),Response.json({unknown:'secret'})]) {
+    await assert.rejects(requestAssistant(question.messages as [{role:'user';content:string}],null,{key:'private',model:'gpt-5-mini',signal:new AbortController().signal,fetcher:async()=>response}),error=>error instanceof AssistantError && !error.message.includes('secret'));
+  }
+});
+
+test('assistant distinguishes provider credits, quota and throttling without exposing error bodies', async () => {
+  const cases: [number, string | null, string | null, RegExp][] = [
+    [429,'credit_balance_exhausted','insufficient_quota',/เครดิต OpenAI หมด/],
+    [429,'project_spend_limit_exceeded','insufficient_quota',/Spend limits/],
+    [429,'organization_spend_limit_exceeded','insufficient_quota',/Spend limits/],
+    [429,'organization_usage_limit_exceeded','insufficient_quota',/Usage limits/],
+    [429,'insufficient_quota',null,/Billing/],
+    [429,null,'insufficient_quota',/Billing/],
+    [429,'rate_limit_exceeded',null,/ถี่เกินไป/],
+    [429,'slow_down','rate_limit_error',/ถี่เกินไป/],
+    [429,null,'rate_limit_error',/ถี่เกินไป/],
+    [429,'unknown',null,/ติดข้อจำกัดการใช้งาน/],
+    [401,'invalid_api_key',null,/ยืนยันตัวตน/],
+    [403,'unknown',null,/ปฏิเสธการเข้าถึง/],
+  ];
+  for (const [status,code,type,expected] of cases) {
+    await assert.rejects(requestAssistant(question.messages as [{role:'user';content:string}],null,{
+      key:'not-real-key',model:'gpt-5-mini',signal:new AbortController().signal,
+      fetcher:async()=>Response.json({error:{code,type,message:'secret upstream credentials'}},{status}),
+    }), error=>error instanceof AssistantError && error.status === (status===429 ? 503 : 502) && expected.test(error.message) && !error.message.includes('secret'));
+  }
+  // Oversized bodies must not be interpreted, even if they contain a known code.
+  await assert.rejects(requestAssistant(question.messages as [{role:'user';content:string}],null,{
+    key:'not-real-key',model:'gpt-5-mini',signal:new AbortController().signal,
+    fetcher:async()=>Response.json({error:{code:'insufficient_quota',message:'secret'.repeat(3000)}},{status:429}),
+  }),error=>error instanceof AssistantError && /ติดข้อจำกัดการใช้งาน/.test(error.message) && !error.message.includes('secret'));
+});
+
+test('assistant sends own aggregate PostgreSQL totals only after opt-in and never counts an open', async () => {
+  const owner = await pool.query("INSERT INTO users(email,password_hash) VALUES('ai-owner@example.test','not-used') RETURNING id");
+  const other = await pool.query("INSERT INTO users(email,password_hash) VALUES('ai-other@example.test','not-used') RETURNING id");
+  const own = await pool.query("INSERT INTO links(code,original_url,title,owner_id) VALUES('ai-owner-link','https://example.com/private','PRIVATE-TITLE',$1) RETURNING id",[owner.rows[0].id]);
+  await pool.query("INSERT INTO links(code,original_url,owner_id) VALUES('ai-other-link','https://example.com/other',$1)",[other.rows[0].id]);
+  await pool.query('INSERT INTO click_events(link_id) VALUES($1),($1)',[own.rows[0].id]);
+  const snapshot=await ownedAssistantSummary(owner.rows[0].id);
+  assert.equal(snapshot.total_links,1); assert.equal(snapshot.total_opens,2); assert.equal(snapshot.opens_today,2); assert.equal(snapshot.active_links,1);
+  assert.equal(snapshot.timezone,'UTC'); assert.ok(!JSON.stringify(snapshot).includes('PRIVATE-TITLE'));
+  let summaryCalls=0;
+  const beforeEvents=await pool.query('SELECT COUNT(*)::int AS n FROM click_events');
+  const local=assistantTestApp({summary:async id=>{summaryCalls++;assert.equal(id,fixtureUserId);return ownedAssistantSummary(id);},fetcher:async(_url,init)=>{
+    const body=JSON.parse(init!.body as string); assert.ok(!body.instructions.includes('PRIVATE-TITLE')); assert.ok(!body.instructions.includes('ai-other@example.test'));
+    assert.equal(body.instructions.includes('AUTHORITATIVE WORKSPACE SUMMARY'),summaryCalls>0); return providerAnswer();
+  }});
+  const post=()=>request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf);
+  const without=await post().send(question).expect(200); assert.equal(without.body.summary,undefined); assert.equal(summaryCalls,0);
+  const withStats=await post().send({...question,includeStats:true}).expect(200); assert.equal(summaryCalls,1); assert.equal(withStats.body.summary.total_links,(await ownedAssistantSummary(fixtureUserId)).total_links);
+  await post().send({...question,ownerId:other.rows[0].id}).expect(400); assert.equal(summaryCalls,1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events')).rows[0].n,beforeEvents.rows[0].n);
+  const original=clock.now;
+  try { clock.now=()=>Date.parse('2035-01-01T00:00:00Z'); await pool.query('UPDATE links SET expires_at=$1 WHERE id=$2',[new Date(clock.now()),own.rows[0].id]); assert.equal((await ownedAssistantSummary(owner.rows[0].id)).active_links,0); }
+  finally {clock.now=original;}
+});
+
+test('assistant applies request rate limits before provider calls', async () => {
+  let calls=0; const local=assistantTestApp({fetcher:async()=>{calls++;return providerAnswer();}});
+  for(let i=0;i<10;i++) await request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(200);
+  const limited=await request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(429);
+  assert.equal(calls,10); assert.ok(limited.headers['retry-after']);
+});
+
+test('assistant prevents simultaneous questions and releases its lock after completion', async () => {
+  let started!:()=>void; let release!:()=>void;
+  const ready=new Promise<void>(resolve=>{started=resolve;}); const gate=new Promise<void>(resolve=>{release=resolve;});
+  const local=assistantTestApp({fetcher:async()=>{started();await gate;return providerAnswer();}});
+  const post=()=>request(local).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question);
+  const first=post().then(response=>response); await ready;
+  try {await post().expect(429);} finally {release();}
+  assert.equal((await first).status,200); await post().expect(200);
+});
+
+test('assistant timeouts and network failures are sanitized and expired sessions cannot ask', async () => {
+  const timeout=assistantTestApp({timeoutMs:10,fetcher:async(_url,init)=>new Promise((_resolve,reject)=>{init!.signal!.addEventListener('abort',()=>reject(new Error('private upstream details')),{once:true});})});
+  const timed=await request(timeout).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(504); assert.ok(!timed.text.includes('private'));
+  const network=assistantTestApp({fetcher:async()=>{throw new Error('database-password-private');}});
+  const failed=await request(network).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(502); assert.ok(!failed.text.includes('database-password'));
+  const original=clock.now;
+  try { clock.now=()=>Date.parse('2101-01-01T00:00:00Z'); await request(network).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(401); }
+  finally {clock.now=original;}
 });
