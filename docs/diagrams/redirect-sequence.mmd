@@ -1,0 +1,26 @@
+sequenceDiagram
+  participant B as Recipient browser
+  participant A as Express
+  participant D as PostgreSQL
+  participant T as Destination website
+  B->>A: GET /preview/:code + /api/links/:code/preview
+  A->>D: Read destination/title/expiry/is_active
+  A-->>B: Public Preview/status, no event / no target fetch
+  Note over B: No auto redirect on React render or refresh
+  B->>A: Continue: GET preview metadata again
+  A->>D: Read current status for feedback
+  A-->>B: Metadata, unavailable remains on Preview
+  B->>A: If active: GET /:code (also direct Short URL/QR flow)
+  A->>D: BEGIN, SELECT current link FOR SHARE
+  alt missing or disabled or expires_at <= now
+    A->>D: ROLLBACK
+    A-->>B: 404 or410, no Location / event
+  else valid active HTTP/HTTPS
+    A->>D: INSERT click_events(link_id), COMMIT
+    D-->>A: Committed event
+    A-->>B: 302 Location: latest stored URL, no-store
+    B->>T: Follow destination URL
+  end
+  Note over A,D: Event/DB failure rolls back, safe500, no redirect
+  Note over A,D: HEAD checks same availability without inserting event
+  Note over A,D: Owner PATCH waits for same row lock, prior committed opens remain

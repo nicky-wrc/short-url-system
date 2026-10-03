@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant B as Member browser
+  participant A as Express / Passport
+  participant D as PostgreSQL
+  B->>A: GET /api/auth/session
+  A->>D: Create/read bootstrap session and CSRF state
+  A-->>B: Cookie + csrfToken + user or null
+  B->>A: POST login/register + cookie + CSRF
+  A->>D: Read hash / insert new bcrypt user
+  A->>A: Verify credentials, regenerate SID and CSRF, absolute expiry
+  A->>D: Save authenticated session
+  A-->>B: User + renewed token + cookie
+  B->>A: Private history/stats/CSV OR owner write + CSRF
+  A->>D: Session validation + owner-filtered SQL
+  A-->>B: Own data /401 /403 /404
+  B->>A: POST logout + cookie + CSRF
+  A->>D: Destroy current session
+  A-->>B: 204, clear cookie
+  Note over A,D: Password change locks user, updates hash, deletes all own sessions

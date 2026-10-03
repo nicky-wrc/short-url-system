@@ -1,0 +1,20 @@
+flowchart LR
+  U["สมาชิก / ผู้ตรวจงาน"]
+  V["ผู้รับลิงก์ / ผู้สแกน QR"]
+  P4(("4.0 Preview destination"))
+  P5(("5.0 Resolve / record open / redirect"))
+  P6(("6.0 Generate / download QR"))
+  D3[("D3 links")]
+  D4[("D4 click_events")]
+  V -->|"Preview code / refresh / status recheck"| P4
+  D3 -->|"title, stored URL, expiry, is_active; no private Tags"| P4
+  P4 -->|"hostname/full URL/status / missing; no event"| V
+  V -->|"GET or HEAD code from Short URL, QR or Continue"| P5
+  D3 -->|"latest destination / availability under row lock"| P5
+  P5 -->|"link_id + database time; qualifying GET only"| D4
+  P5 -->|"302 Location after commit / 404 / 410 / safe failure"| V
+  U -->|"existing link code / download choice"| P6
+  V -->|"existing link code / download choice"| P6
+  D3 -->|"existing code"| P6
+  P6 -->|"PNG encoding public Short URL; no event"| U
+  P6 -->|"PNG encoding public Short URL; no event"| V

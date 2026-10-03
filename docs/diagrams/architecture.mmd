@@ -1,0 +1,37 @@
+flowchart TB
+  B["Browser / phone: React19 + TypeScript"]
+  subgraph R["Render Free · one Node22 Web Service"]
+    H["HTTPS reverse proxy"]
+    E["Express5 + TypeScript"]
+    S["Static Vite production build"]
+    A["Passport Local / bcrypt / PG sessions / CSRF"]
+    M["Owner APIs: links / Tags / stats / CSV / Profile"]
+    P["Public Preview / QR"]
+    X["Public redirect transaction / event / 302"]
+    C["AI assistant: bounded authenticated request"]
+    START["start-render.mjs: derive origin / additive migrations / start"]
+  end
+  D[("Supabase PostgreSQL: users / sessions / links / click_events")]
+  AI["OpenAI Responses API · optional server-only key"]
+  T["Destination website"]
+  B <-->|"HTTPS same origin"| H
+  H --> E
+  START --> E
+  START -->|"migrations001-006"| D
+  E --> S
+  S -->|"HTML / JS / CSS"| B
+  E --> A
+  E --> M
+  E --> P
+  E --> X
+  E --> C
+  A <-->|"users / sessions; verified TLS via pg"| D
+  A -->|"session owner / CSRF for writes"| M
+  A -->|"session owner / CSRF"| C
+  M <-->|"parameterized SQL; owner scope"| D
+  P -->|"read stored link; never fetch destination"| D
+  X <-->|"row lock / status check / event commit"| D
+  C -->|"opt-in owned aggregate reads"| D
+  C <-->|"HTTPS conversation / answer; store:false"| AI
+  X -->|"302 Location via response"| B
+  B -->|"follow Location; query / fragment preserved"| T

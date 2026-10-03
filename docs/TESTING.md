@@ -1,5 +1,16 @@
 # Verification
 
+## Current status — 2026-10-04
+
+Documentation verification ในรอบนี้: ตรวจ route coverage 25 explicit handlers พร้อม HEAD behavior, schema 4 ตาราง/22 columns จาก migrations 001–006, source parity ของ Mermaid หลัก 7 ภาพ และ render ผ่าน browser 10 ภาพรวม DFD views; export เป็น SVG ตรวจภาพ ER/DFD และลิงก์ไฟล์ใน Markdown ไม่ขาด `git diff --check` ผ่าน ไม่แก้ application code/dependencies ไม่ rerun integration/typecheck/build ที่ไม่เกี่ยวกับ docs และไม่แตะ production data
+
+- Source ปัจจุบันมี 52 top-level backend tests + 3 dev readiness tests = 55 tests ตามผลตรวจ local ล่าสุดในส่วน Private tags ด้านล่าง (ไม่ใช่ 9 หรือ 15 tests ซึ่งเป็น record รุ่นเก่า)
+- ครอบคลุม auth/ownership/CSRF/session/Profile/avatar, create/URL/alias, Preview/QR/redirect/concurrency/expiry/status/edit/Tags, search/stats/CSV และ AI contracts ด้วย provider fixtures
+- Production Render ตรวจ build/startup/migrations, health database connected, auth bootstrap cookie flags และ Login UI แล้ว; **ยังไม่ได้ตรวจ authenticated live flows, physical QR scan, actual Excel, GitHub Actions result หรือ penetration test** ดู RENDER.md
+- เอกสารรอบ 2026-10-04 เป็นการตรวจ source/diagram/docs ไม่รัน destructive tests และไม่เปลี่ยน production data. Verification record ด้านล่างเป็นประวัติตามวันที่/scope; ข้อความ not deployed/จำนวน tests เก่าไม่ได้แทน current status
+
+
+
 ## Owner link editing — 2026-10-03
 
 All 52 tests passed (49 backend + 3 readiness), with typecheck and production build passing. Four new regression tests cover owner/session/CSRF restrictions, input/self-origin validation, preservation of code/QR/expiry/status/events, live Preview/history/search/CSV, repeated and partial edits, expiry boundary, concurrent separate-field changes and PostgreSQL row-lock serialization with redirects. Tests use guarded local `shorturl_ui_test`, explicit reset opt-in; Supabase/application production data and OpenAI were not used. The first run hit the existing test auth-rate-limit window; advancing the controlled test clock beyond earlier fixtures fixed isolation without changing application limits.
@@ -32,7 +43,7 @@ Typecheck, build and all 48 tests passed (45 backend + 3 readiness). Tests use t
 16. Local target spy ยืนยัน API/page/QR ไม่เรียกเว็บไซต์ปลายทาง; hostname ไม่รวม port และ title HTML เป็น metadata ข้อความ
 17. Invalid imported destination, malformed path และ database failure ไม่ redirect/เพิ่ม event/เปิดเผยข้อความ private
 
-รายการข้างต้นเป็น coverage หลาย assertions ต่อ test case; suite ปัจจุบันมี **15 test cases**
+รายการข้างต้นเป็น baseline coverage ในรอบ Preview ที่มี **15 test cases** ณ ตอนนั้น; current suite count อยู่ใน Current status ด้านบน
 
 ## Manual acceptance
 

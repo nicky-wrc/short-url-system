@@ -1,0 +1,24 @@
+flowchart LR
+  U["สมาชิก / ผู้ตรวจงาน"]
+  P1(("1.0 Authentication / Profile"))
+  P2(("2.0 Create Short URL"))
+  P3(("3.0 Edit / enable-disable / private Tags"))
+  D1[("D1 users")]
+  D2[("D2 sessions")]
+  D3[("D3 links")]
+  U -->|"register/login/logout, name/photo/password, cookie + CSRF"| P1
+  D1 -->|"password hash / profile"| P1
+  P1 -->|"new account / updated name, normalized photo, password hash"| D1
+  D2 -->|"session / absolute expiry / CSRF state"| P1
+  P1 -->|"new/rotated/revoked sessions"| D2
+  P1 -->|"user, cookie, CSRF token / auth error"| U
+  P1 -->|"verified session owner + write protection"| P2
+  P1 -->|"verified session owner + write protection"| P3
+  U -->|"HTTP/HTTPS URL, title, alias, Tags, expiry choice"| P2
+  P2 -->|"validated code/destination/owner/UTC expiry/private Tags"| D3
+  D3 -->|"unique code conflict / stored link"| P2
+  P2 -->|"Short URL / input or conflict error"| U
+  U -->|"code + title/originalUrl/Tags OR explicit isActive"| P3
+  D3 -->|"owned link / existing attributes"| P3
+  P3 -->|"owner-filtered metadata or status update"| D3
+  P3 -->|"saved Link / validation or not-found error"| U

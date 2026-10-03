@@ -1,0 +1,20 @@
+sequenceDiagram
+  participant B as Member browser
+  participant A as Express
+  participant D as PostgreSQL
+  B->>A: POST /api/links + cookie + CSRF (URL/title/tags/expiry)
+  A->>A: Validate session/origin/body, compute backend create time/expiry
+  A->>D: INSERT link with session owner and unique code
+  alt unique conflict
+    D-->>A: 23505
+    A->>A: Random code retry max5, explicit alias returns409
+  else created
+    D-->>A: Stored link
+    A-->>B: 201 Link with public Short URL
+    B->>A: GET /api/links/:code/qr?download=1
+    A->>D: Read existing code
+    A-->>B: PNG containing /:code (no event)
+    B->>A: GET /api/links + GET /api/stats
+    A->>D: Read owner rows + COUNT events
+    A-->>B: My links / real UTC statistics
+  end

@@ -1,0 +1,7 @@
+flowchart LR
+  U["สมาชิก / ผู้ตรวจงาน"] -->|"credentials, profile, link metadata, filters, question"| S(("0: Link Studio"))
+  S -->|"session, My links, statistics, CSV, QR, answer / errors"| U
+  V["ผู้รับลิงก์ / ผู้สแกน QR"] -->|"code / Preview / QR request"| S
+  S -->|"metadata / PNG / 302 Location / unavailable"| V
+  S -->|"question + guide + optional owned aggregate; server key"| AI["OpenAI Responses API (optional)"]
+  AI -->|"answer / provider failure"| S

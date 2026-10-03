@@ -1,0 +1,22 @@
+flowchart LR
+  U["สมาชิก / ผู้ตรวจงาน"]
+  AI["OpenAI Responses API (optional)"]
+  P7(("7.0 My links / search / Analytics"))
+  P8(("8.0 Export owned CSV"))
+  P9(("9.0 AI assistance"))
+  D3[("D3 links")]
+  D4[("D4 click_events")]
+  U -->|"q, single Tag, page / owned totals request"| P7
+  D3 -->|"owned history, private Tags, active/total link counts"| P7
+  D4 -->|"owned event counts / UTC daily totals"| P7
+  P7 -->|"My links / tag choices / UTC statistics"| U
+  U -->|"q + single Tag; all matching pages"| P8
+  D3 -->|"owned matching rows / status / UTC dates"| P8
+  D4 -->|"matching link event counts"| P8
+  P8 -->|"UTF-8 BOM CSV / validation or >10000 error; no event"| U
+  U -->|"question / recent conversation / optional stats consent"| P9
+  D3 -->|"own aggregate link totals only when opted in"| P9
+  D4 -->|"own aggregate opens only when opted in"| P9
+  P9 -->|"guide + conversation + optional aggregate; store:false"| AI
+  AI -->|"plain-text answer / failure"| P9
+  P9 -->|"answer / sanitized error; no mutation/events"| U

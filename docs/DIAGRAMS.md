@@ -1,222 +1,292 @@
-# System diagrams
+# Link Studio — System diagrams
 
-แผนภาพตรงกับ implementation: Login/My links พร้อม ownership ที่ backend; Short URL/Preview/QR ยังสาธารณะ, Backend หนึ่ง service พร้อมฐานข้อมูล PostgreSQL
+ตรวจเทียบ source code และ migrations 001–006 เมื่อ 2026-10-04: [System design](SYSTEM.md), [API](API.md), [Data dictionary](DATABASE.md) ระบบมี 4 application tables จริง ไม่มี table สำหรับ Tags/QR/สถิติ/chat
+
+Mermaid ด้านล่างเปิดดูได้บน GitHub; source แยกอยู่ใน `docs/diagrams/*.mmd` สำหรับ export/นำเสนอ ทุก process เป็นฟังก์ชันภายใน service เดียว ไม่ใช่ microservice
+
+ไฟล์ SVG สำหรับเปิดเต็มหน้าและ zoom: [Context](diagrams/context.svg), [DFD Level 0](diagrams/dfd-level-0.svg), [ER](diagrams/er.svg), [Architecture](diagrams/architecture.svg), [Create sequence](diagrams/create-sequence.svg), [Redirect sequence](diagrams/redirect-sequence.svg), [Auth sequence](diagrams/auth-sequence.svg). DFD รวมมีข้อมูลหลาย flow ควรเปิด SVG เต็มหน้าควบคู่ตาราง mapping; SVG เป็น snapshot ต้อง render ใหม่เมื่อแก้ Mermaid source
+
+## Context diagram
+
+แสดงขอบเขตทั้งระบบโดยไม่มี data store บางตำราเรียก context นี้ Level 0 จึงแนบคู่กับ DFD ที่แตก process หลักด้านล่าง
+
+```mermaid
+flowchart LR
+  U["สมาชิก / ผู้ตรวจงาน"] -->|"credentials, profile, link metadata, filters, question"| S(("0: Link Studio"))
+  S -->|"session, My links, statistics, CSV, QR, answer / errors"| U
+  V["ผู้รับลิงก์ / ผู้สแกน QR"] -->|"code / Preview / QR request"| S
+  S -->|"metadata / PNG / 302 Location / unavailable"| V
+  S -->|"question + guide + optional owned aggregate; server key"| AI["OpenAI Responses API (optional)"]
+  AI -->|"answer / provider failure"| S
+```
+
+เว็บไซต์ปลายทางไม่ใช่ provider ที่ backend ส่ง request ไป ระบบส่ง Location ให้ browser แล้ว browser จึงติดต่อเว็บไซต์เอง
 
 ## DFD Level 0
 
-แสดง process หลัก ข้อมูลเข้าออก external entities และ data stores โดยหน้า Preview และการสร้าง/ดาวน์โหลด QR ไม่สร้าง Click Event
+แสดง external entities, numbered processes, data stores และ named data flows ครบฟังก์ชันหลักและฟีเจอร์ปัจจุบัน D1–D4 เป็นตารางใน PostgreSQL เดียวกัน ลูกศร store→process เป็นข้อมูลที่อ่าน และ process→store เป็นข้อมูลที่เขียน ไม่ใช่ลำดับเวลา
 
 ```mermaid
-flowchart LR
-    U["ผู้สร้างลิงก์ / ผู้ตรวจงาน"]
-    V["ผู้เปิดลิงก์ / ผู้สแกน QR"]
-    P1(("1.0 สร้าง Short URL"))
-    P2(("2.0 เปิดลิงก์และบันทึกการเปิด"))
-    P3(("3.0 สร้าง QR Code"))
-    P4(("4.0 ประวัติและสถิติ"))
-    P5(("5.0 Preview ปลายทาง"))
-    P6(("6.0 Register / Login / Logout / Profile / CSRF"))
-    P7(("7.0 Owner link status / name / destination / private tags"))
-    P8(("8.0 AI assistant: session + CSRF"))
-    AI["OpenAI Responses API"]
-    D1[("D1: Links")]
-    D2[("D2: Click Events")]
-    D3[("D3: Users password hashes / private profile photo")]
-    D4[("D4: Server sessions")]
-    U -->|"email/password, display name, photo หรือ cookie + CSRF"| P6
-    P6 <-->|"hash/compare + current user profile"| D3
-    P6 <-->|"สร้าง / ตรวจ expiry / revoke"| D4
-    P6 -->|"authenticated owner identity"| P1
-    P6 -->|"authenticated owner identity"| P4
-    P6 -->|"session owner + CSRF"| P7
-    P6 -->|"session owner + CSRF"| P8
-    U -->|"question / recent conversation / optional stats consent"| P8
-    D1 -->|"owned aggregate totals only when opted in"| P8
-    D2 -->|"owned open counts only when opted in; read only"| P8
-    P8 -->|"curated guide + conversation + optional own totals; store:false"| AI
-    AI -->|"plain text response / safe error"| P8
-    P8 -->|"answer or unavailable/limit error; no mutations/events"| U
-    U -->|"code + explicit isActive OR editable title/originalUrl/tags"| P7
-    P7 <-->|"owner-filtered UPDATE; preserve code, QR, expiry/events"| D1
-    P7 -->|"confirmed saved link / validation, auth or not-found error"| U
-    P6 -->|"cookie / token / own profile / error"| U
-    U -->|"URL ต้นฉบับ, ชื่อ, private tags, alias, expiryPreset หรือ custom expiresAt"| P1
-    P1 -->|"ข้อมูลลิงก์ที่ตรวจสอบแล้ว"| D1
-    D1 -->|"รหัสซ้ำ / ข้อมูลลิงก์"| P1
-    P1 -->|"Short URL / validation error"| U
-    V -->|"GET code จากลิงก์หรือ QR"| P2
-    D1 -->|"URL ต้นฉบับและวันหมดอายุ"| P2
-    P2 -->|"link_id และเวลาเปิด"| D2
-    P2 -->|"302 + Location / 404 / 410"| V
-    U -->|"รหัสลิงก์ที่ต้องการ QR"| P3
-    D1 -->|"รหัสลิงก์ที่มีอยู่"| P3
-    P3 -->|"PNG เข้ารหัส Short URL"| U
-    U -->|"คำค้น, Tag และเลขหน้า / ขอข้อมูลสถิติ / export CSV ทุกหน้า"| P4
-    D1 -->|"รายการและสถานะลิงก์"| P4
-    D2 -->|"จำนวนเปิดและวันที่เปิด"| P4
-    P4 -->|"My links / owner stats / private CSV หรือ limit error"| U
-    V -->|"ขอดู Preview ตาม code"| P5
-    D1 -->|"URL, ชื่อ และวันหมดอายุ"| P5
-    P5 -->|"โดเมน / URL เต็ม / สถานะ"| V
+flowchart TB
+  U["สมาชิก / ผู้ตรวจงาน"]
+  V["ผู้รับลิงก์ / ผู้สแกน QR"]
+  AI["OpenAI Responses API (optional)"]
+  P1(("1.0 Authentication / Profile"))
+  P2(("2.0 Create Short URL"))
+  P3(("3.0 Edit / enable-disable / private Tags"))
+  P4(("4.0 Preview destination"))
+  P5(("5.0 Resolve / record open / redirect"))
+  P6(("6.0 Generate / download QR"))
+  P7(("7.0 My links / search / Analytics"))
+  P8(("8.0 Export owned CSV"))
+  P9(("9.0 AI assistance"))
+  D1[("D1 users")]
+  D2[("D2 sessions")]
+  D3[("D3 links")]
+  D4[("D4 click_events")]
+  U -->|"register/login/logout, name/photo/password, cookie + CSRF"| P1
+  D1 -->|"password hash / profile"| P1
+  P1 -->|"new account / updated name, normalized photo, password hash"| D1
+  D2 -->|"session / absolute expiry / CSRF state"| P1
+  P1 -->|"new/rotated/revoked sessions"| D2
+  P1 -->|"user, cookie, CSRF token / auth error"| U
+  P1 -->|"verified session owner + write protection"| P2
+  P1 -->|"verified session owner + write protection"| P3
+  P1 -->|"verified session owner"| P7
+  P1 -->|"verified session owner"| P8
+  P1 -->|"verified session owner + write protection"| P9
+  U -->|"HTTP/HTTPS URL, title, alias, Tags, expiry choice"| P2
+  P2 -->|"validated code/destination/owner/UTC expiry/private Tags"| D3
+  D3 -->|"unique code conflict / stored link"| P2
+  P2 -->|"Short URL / input or conflict error"| U
+  U -->|"code + title/originalUrl/Tags OR explicit isActive"| P3
+  D3 -->|"owned link / existing attributes"| P3
+  P3 -->|"owner-filtered metadata or status update"| D3
+  P3 -->|"saved Link / validation or not-found error"| U
+  V -->|"Preview code / refresh / status recheck"| P4
+  D3 -->|"title, stored URL, expiry, is_active; no private Tags"| P4
+  P4 -->|"hostname/full URL/status / missing; no event"| V
+  V -->|"GET or HEAD code from Short URL, QR or Continue"| P5
+  D3 -->|"latest destination / availability under row lock"| P5
+  P5 -->|"link_id + database time; qualifying GET only"| D4
+  P5 -->|"302 Location after commit / 404 / 410 / safe failure"| V
+  U -->|"existing link code / download choice"| P6
+  V -->|"existing link code / download choice"| P6
+  D3 -->|"existing code"| P6
+  P6 -->|"PNG encoding public Short URL; no event"| U
+  P6 -->|"PNG encoding public Short URL; no event"| V
+  U -->|"q, single Tag, page / owned totals request"| P7
+  D3 -->|"owned history, private Tags, active/total link counts"| P7
+  D4 -->|"owned event counts / UTC daily totals"| P7
+  P7 -->|"My links / tag choices / UTC statistics"| U
+  U -->|"q + single Tag; all matching pages"| P8
+  D3 -->|"owned matching rows / status / UTC dates"| P8
+  D4 -->|"matching link event counts"| P8
+  P8 -->|"UTF-8 BOM CSV / validation or >10000 error; no event"| U
+  U -->|"question / recent conversation / optional stats consent"| P9
+  D3 -->|"own aggregate link totals only when opted in"| P9
+  D4 -->|"own aggregate opens only when opted in"| P9
+  P9 -->|"guide + conversation + optional aggregate; store:false"| AI
+  AI -->|"plain-text answer / failure"| P9
+  P9 -->|"answer / sanitized error; no mutation/events"| U
 ```
 
-## Sequence: Preview แบบเลือกใช้
+### Process → implementation mapping
 
-```mermaid
-sequenceDiagram
-    participant B as Browser / React
-    participant A as Express
-    participant D as PostgreSQL
-    participant T as Target website
-    B->>A: GET /preview/:code + GET /api/links/:code/preview
-    A->>D: SELECT stored destination, expiry and is_active
-    D-->>A: Metadata or missing
-    A-->>B: Preview UI + metadata (no event)
-    Note over B: Render/refresh does not navigate to target
-    B->>A: User presses Continue: GET /api/links/:code/preview (no event)
-    A->>D: Re-read metadata for immediate disabled/expired feedback
-    A-->>B: Current status; stay on Preview if unavailable
-    B->>A: Only active: GET /:code
-    A->>D: BEGIN + SELECT current link FOR SHARE: expiry/is_active
-    alt missing / disabled / expired / invalid stored destination
-      A-->>B: 404 / 410 / generic 500 (no event)
-    else active HTTP/HTTPS destination
-      A->>D: INSERT click_events(link_id)
-      D-->>A: Event stored + COMMIT
-      A-->>B: 302 Location: saved destination
-      B->>T: Follow redirect with original query/fragment
-    end
-    Note over A,D: HEAD validates availability without inserting an event
-    Note over A,D: PATCH status serializes on same row; disabled precedes expiry
-```
+| Process | Routes / files | Store effect |
+|---|---|---|
+| 1.0 | /api/auth/*; auth.ts / avatar.ts | users + sessions read/write; password change revokes all own sessions |
+| 2.0 | POST /api/links; app.ts | INSERT links |
+| 3.0 | PATCH /api/links/:code and /status; app.ts / tags.ts | UPDATE owned links only |
+| 4.0 | /preview/:code and /api/links/:code/preview | read links only |
+| 5.0 | GET/HEAD /:code | read links; successful GET INSERT click_events |
+| 6.0 | GET /api/links/:code/qr | read links, generate PNG in memory |
+| 7.0 | GET /api/links, /api/tags, /api/stats | owner-scoped reads; stats ignore q/tag filters |
+| 8.0 | GET /api/links/export.csv; csv.ts | owner-scoped reads, no persisted export |
+| 9.0 | /api/assistant/status and /chat; assistant.ts | optional aggregate reads, external API, no chat table |
 
-Short URL และ QR เดิมยังใช้ `/:code` โดยตรง หน้า `/preview/:code` เป็นทางเลือกสำหรับแชร์ก่อนเปิด เว็บไซต์ปลายทางไม่ถูกเรียกจาก backend และ ER Diagram ไม่เปลี่ยน
+Public processes 4–6 do not require Login. Private processes use identity from server session; no supplied owner_id can select another owner. Legacy ownerless links still work publicly. Redirect is the only business flow that writes click_events; session bootstrap may write sessions independently.
 
-บางตำราเรียก context diagram ว่า Level 0 และ decomposition ว่า Level 1 จึงแนบ context view ไว้เพิ่มเติมเพื่อให้ตรวจได้ทั้งสอง convention
+### DFD views สำหรับนำเสนอ
 
-```mermaid
-flowchart LR
-    Creator["ผู้สร้างลิงก์ / ผู้ตรวจงาน"] -->|"URL, ตัวเลือก, คำขอประวัติ/QR/Preview"| System(("0: Short URL System"))
-    System -->|"Short URL, QR, ประวัติ, สถิติ, ข้อผิดพลาด"| Creator
-    Visitor["ผู้เปิดลิงก์ / ผู้สแกน QR"] -->|"รหัส Short URL"| System
-    System -->|"Preview / HTTP Redirect / ไม่พบ / หมดอายุ"| Visitor
-```
+ใช้ process/data-flow เดียวกับ DFD รวม แยกภาพเพื่อลดเส้นไขว้ ไม่ใช่ processes ใหม่หรือ Level 1 decomposition; entity/store ที่ซ้ำหมายถึง entity/store เดียวกันในระบบ:
+
+- [1.0–3.0 บัญชี / Profile / สร้างและจัดการลิงก์](diagrams/dfd-account-links.svg) · [Mermaid source](diagrams/dfd-account-links.mmd)
+- [4.0–6.0 Preview / Redirect / QR สาธารณะ](diagrams/dfd-public-links.svg) · [Mermaid source](diagrams/dfd-public-links.mmd)
+- [7.0–9.0 My links / Analytics / CSV / AI](diagrams/dfd-reports-ai.svg) · [Mermaid source](diagrams/dfd-reports-ai.mmd)
+
+ภาพรายงานแสดงเฉพาะ business data flows; verified identity ของ 1.0 → 7.0/8.0/9.0 ดูในภาพรวมและ mapping ทุก private endpoint ยังต้อง Login ตาม API.md
 
 ## ER Diagram
 
 ```mermaid
 erDiagram
-    USERS o|--o{ LINKS : "owns nullable legacy"
-    LINKS ||--o{ CLICK_EVENTS : "has"
-    LINKS {
-        bigint id PK "identity"
-        varchar code UK "4–32 chars; random default 8"
-        text original_url "max 2048 chars"
-        varchar title "max 120 chars"
-        timestamptz created_at "default NOW()"
-        timestamptz expires_at "nullable"
-        bigint owner_id FK "ON DELETE SET NULL"
-        boolean is_active "NOT NULL DEFAULT TRUE"
-        text_array tags "NOT NULL DEFAULT empty; owner-only"
-    }
-    CLICK_EVENTS {
-        bigint id PK "identity"
-        bigint link_id FK "ON DELETE CASCADE"
-        timestamptz opened_at "default NOW()"
-    }
-    USERS {
-        bigint id PK
-        varchar email UK
-        text password_hash "bcrypt cost 12"
-        varchar display_name "default empty; max 80"
-        bytea avatar_image "nullable normalized WebP; max 256 KiB"
-        uuid avatar_version "nullable image version"
-        timestamptz created_at
-    }
-    SESSIONS {
-        varchar sid PK
-        json sess "Passport user ID / CSRF / absolute expiry / cookie"
-        timestamp expire
-    }
+  USERS o|..o{ LINKS : owns_nullable_legacy
+  LINKS ||..o{ CLICK_EVENTS : records
+  USERS {
+    bigint id PK "generated always identity"
+    varchar254 email UK "NOT NULL"
+    text password_hash "NOT NULL; bcrypt cost12"
+    timestamptz created_at "NOT NULL; NOW()"
+    varchar80 display_name "NOT NULL; default empty"
+    bytea avatar_image "nullable; WebP <=262144 bytes"
+    uuid avatar_version "nullable; paired with image"
+  }
+  LINKS {
+    bigint id PK "generated always identity"
+    varchar32 code UK "NOT NULL; regex4-32; random8"
+    text original_url "NOT NULL; length1-2048"
+    varchar120 title "NOT NULL; default empty"
+    timestamptz created_at "NOT NULL; NOW()"
+    timestamptz expires_at "nullable; NULL means never"
+    bigint owner_id FK "nullable; ON DELETE SET NULL"
+    boolean is_active "NOT NULL; default true"
+    text_array tags "NOT NULL; default empty; private"
+  }
+  CLICK_EVENTS {
+    bigint id PK "generated always identity"
+    bigint link_id FK "NOT NULL; ON DELETE CASCADE"
+    timestamptz opened_at "NOT NULL; NOW()"
+  }
+  SESSIONS {
+    varchar sid PK "unbounded varchar"
+    json sess "NOT NULL; user ID / CSRF / authExpiresAt / cookie"
+    timestamp6 expire "NOT NULL; WITHOUT TIME ZONE"
+  }
 ```
 
-หนึ่งลิงก์มี 0..N events; ownership nullable สำหรับ legacy ไม่มี claim endpoint Sessions เก็บ user ID ใน JSON ตาม Passport ไม่ใช่ FK ไม่มี password/hash ใน cookie ไม่เก็บ IP/user-agent
+ER type labels varchar254/varchar80/varchar120/varchar32/timestamp6/text_array หมายถึง PostgreSQL VARCHAR(254)/(80)/(120)/(32), TIMESTAMP(6) และ TEXT[] ตาม [Data Dictionary](DATABASE.md) ไม่ใช่ custom database types
 
-Expiry preset ไม่เพิ่มตาราง/column: backend คำนวณ `created_at` และ `expires_at` จาก clock เดียวกันทันทีที่สร้าง (1h/1d/7d) หรือรับ custom ISO timestamp ที่อยู่ในอนาคต เก็บเป็น `TIMESTAMPTZ`; none เป็น NULL ก่อน Redirect ตรวจ `expires_at <= now` แล้วตอบ 410 โดยไม่มี event
+หนึ่ง user มี0..N links; link มี0..1 owner; event ต้องมีหนึ่ง link Sessions แยกใน ER เพราะ user ID เก็บใน JSON ไม่มี foreign key จริงและมี anonymous sessions ได้ ไม่วาด FK ปลอม ไม่มี column short_url/clicks/status/hostname: คำนวณจาก config, COUNT(events), URL parser และสถานะล่าสุด
 
-Indexes: unique `links.code`, `links(created_at DESC, id DESC)`, `click_events(link_id)`, `click_events(opened_at)`
+Indexes/constraints/nullability/migrations ทั้งหมดอยู่ใน DATABASE.md เวลา links/users/events ใช้ TIMESTAMPTZ; session expire เป็น TIMESTAMP(6) without time zone ของ connect-pg-simple ไม่มีตาราง Tags แยก ไม่มี Supabase auth.users/Storage buckets ใน implementation นี้
 
 ## Architecture Diagram
 
 ```mermaid
 flowchart TB
-    Browser["Browser / Phone camera"]
-    Proxy["HTTPS host / trusted reverse proxy"]
-    subgraph Service["หนึ่ง Node.js service · modular monolith"]
-      Static["React + TypeScript UI (Vite build)"]
-      Express["Express 5 + TypeScript"]
-      API["API: owner-scoped create / history / stats / CSV"]
-      Auth["Passport Local + bcrypt + PG sessions + CSRF"]
-      Redirect["Redirect: lookup / expiry / record / 302"]
-      QR["QR encoder: PNG from public short URL"]
-      Preview["Preview: stored destination and status; no click event"]
-      Assistant["AI assistant: private session/CSRF + bounded request"]
-    end
-    DB[("PostgreSQL: links + click_events + users + sessions")]
-    Target["เว็บไซต์ปลายทาง"]
-    AI["OpenAI Responses API: optional server key"]
-    Browser <-->|"HTTPS"| Proxy
-    Proxy --> Express
-    Express --> Static
-    Express --> API
-    Express --> Auth
-    Auth <-->|"users / sessions"| DB
-    Auth -->|"session owner for private APIs"| API
-    Express --> Redirect
-    Express --> QR
-    Express --> Preview
-    Express --> Assistant
-    Auth -->|"authenticated owner"| Assistant
-    Assistant -->|"read own aggregate totals only with consent"| DB
-    Assistant <-->|"HTTPS conversation / answer; key stays on server"| AI
-    API <-->|"parameterized SQL via pg pool"| DB
-    Redirect <-->|"lookup + insert click event"| DB
-    QR -->|"lookup link"| DB
-    Preview -->|"read stored metadata only"| DB
-    Redirect -->|"302 Location ผ่าน proxy"| Browser
-    Browser -->|"ติดตาม Location"| Target
+  B["Browser / phone: React19 + TypeScript"]
+  subgraph R["Render Free · one Node22 Web Service"]
+    H["HTTPS reverse proxy"]
+    E["Express5 + TypeScript"]
+    S["Static Vite production build"]
+    A["Passport Local / bcrypt / PG sessions / CSRF"]
+    M["Owner APIs: links / Tags / stats / CSV / Profile"]
+    P["Public Preview / QR"]
+    X["Public redirect transaction / event / 302"]
+    C["AI assistant: bounded authenticated request"]
+    START["start-render.mjs: derive origin / additive migrations / start"]
+  end
+  D[("Supabase PostgreSQL: users / sessions / links / click_events")]
+  AI["OpenAI Responses API · optional server-only key"]
+  T["Destination website"]
+  B <-->|"HTTPS same origin"| H
+  H --> E
+  START --> E
+  START -->|"migrations001-006"| D
+  E --> S
+  S -->|"HTML / JS / CSS"| B
+  E --> A
+  E --> M
+  E --> P
+  E --> X
+  E --> C
+  A <-->|"users / sessions; verified TLS via pg"| D
+  A -->|"session owner / CSRF for writes"| M
+  A -->|"session owner / CSRF"| C
+  M <-->|"parameterized SQL; owner scope"| D
+  P -->|"read stored link; never fetch destination"| D
+  X <-->|"row lock / status check / event commit"| D
+  C -->|"opt-in owned aggregate reads"| D
+  C <-->|"HTTPS conversation / answer; store:false"| AI
+  X -->|"302 Location via response"| B
+  B -->|"follow Location; query / fragment preserved"| T
 ```
 
-Backend ไม่ fetch เว็บไซต์ปลายทาง Browser เป็นผู้ตาม redirect ฐานข้อมูลเป็น persistent service แยกจากแอป Diagram นี้ไม่ใช่ microservice architecture
+หนึ่ง modular monolith + persistent database แยก ไม่ใช่ microservices Production ใช้ origin เดียวจึงไม่ต้อง general CORS; browser ไม่เชื่อม DB โดยตรง Supabase ใช้เฉพาะ PostgreSQL Session pooler verified TLS ไม่ใช้ Supabase Auth/Data API/Storage รูปเก็บใน DB, QR/CSV สร้างเมื่อขอ ไม่เก็บไฟล์ใน Render disk
 
-Preview อ่าน Links เท่านั้นและไม่เขียน Click Events; ผู้รับกด Continue จึงเรียก flow redirect เดิม หน้า Preview ไม่ใช่การตรวจ phishing หรือการรับรองเว็บไซต์ปลอดภัย ER schema ไม่เปลี่ยน
-
-## Sequence: การเปิดลิงก์
+## Sequence: Create / QR / history
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant A as Express
-    participant D as PostgreSQL
-    participant T as Target website
-    B->>A: GET /code
-    A->>D: SELECT original_url, expires_at WHERE code=$1
-    D-->>A: Link data
-    alt missing, disabled or expired
-      A-->>B: 404 or 410 (no click event)
-    else active
-      A->>D: INSERT click_events(link_id)
-      D-->>A: Event stored + COMMIT
-      A-->>B: 302 + Location + Cache-Control no-store
-      B->>T: GET destination URL
-    end
+  participant B as Member browser
+  participant A as Express
+  participant D as PostgreSQL
+  B->>A: POST /api/links + cookie + CSRF (URL/title/tags/expiry)
+  A->>A: Validate session/origin/body, compute backend create time/expiry
+  A->>D: INSERT link with session owner and unique code
+  alt unique conflict
+    D-->>A: 23505
+    A->>A: Random code retry max5, explicit alias returns409
+  else created
+    D-->>A: Stored link
+    A-->>B: 201 Link with public Short URL
+    B->>A: GET /api/links/:code/qr?download=1
+    A->>D: Read existing code
+    A-->>B: PNG containing /:code (no event)
+    B->>A: GET /api/links + GET /api/stats
+    A->>D: Read owner rows + COUNT events
+    A-->>B: My links / real UTC statistics
+  end
 ```
 
-### Link status migration
+## Sequence: Preview / Redirect / events
 
-`004_link_status.sql` adds links.is_active=true for old rows, including ownerless links. Owners PATCH explicit target state; no click events or expiry are rewritten. Disabled is displayed before Expired, then Active. Public QR keeps the same short URL; public Preview metadata indicates unavailable and GET/HEAD redirect returns 410 without Location/event. Redirect holds a share row lock through validation/event commit so status updates are serialized.
+```mermaid
+sequenceDiagram
+  participant B as Recipient browser
+  participant A as Express
+  participant D as PostgreSQL
+  participant T as Destination website
+  B->>A: GET /preview/:code + /api/links/:code/preview
+  A->>D: Read destination/title/expiry/is_active
+  A-->>B: Public Preview/status, no event / no target fetch
+  Note over B: No auto redirect on React render or refresh
+  B->>A: Continue: GET preview metadata again
+  A->>D: Read current status for feedback
+  A-->>B: Metadata, unavailable remains on Preview
+  B->>A: If active: GET /:code (also direct Short URL/QR flow)
+  A->>D: BEGIN, SELECT current link FOR SHARE
+  alt missing or disabled or expires_at <= now
+    A->>D: ROLLBACK
+    A-->>B: 404 or410, no Location / event
+  else valid active HTTP/HTTPS
+    A->>D: INSERT click_events(link_id), COMMIT
+    D-->>A: Committed event
+    A-->>B: 302 Location: latest stored URL, no-store
+    B->>T: Follow destination URL
+  end
+  Note over A,D: Event/DB failure rolls back, safe500, no redirect
+  Note over A,D: HEAD checks same availability without inserting event
+  Note over A,D: Owner PATCH waits for same row lock, prior committed opens remain
+```
 
+Disabled precedence over Expired over Active; enable never clears expiry. Old QR/short code stays unchanged after edits/status updates but old PNG containing localhost requires downloading a fresh production QR. Query sent to Short URL cannot override stored destination.
 
-### Private tags migration
+## Sequence: Login / private APIs / Logout
 
-006_link_tags.sql adds links.tags (text array, default empty) and a GIN index; no new table. P1/P7 write validated owner tags; P4 returns owner tag choices and filters history/CSV by search AND one tag. Public Preview and QR exclude tags. AI opt-in totals exclude tag names. Global owner statistics remain unfiltered; filtering affects My links and CSV only.
+```mermaid
+sequenceDiagram
+  participant B as Member browser
+  participant A as Express / Passport
+  participant D as PostgreSQL
+  B->>A: GET /api/auth/session
+  A->>D: Create/read bootstrap session and CSRF state
+  A-->>B: Cookie + csrfToken + user or null
+  B->>A: POST login/register + cookie + CSRF
+  A->>D: Read hash / insert new bcrypt user
+  A->>A: Verify credentials, regenerate SID and CSRF, absolute expiry
+  A->>D: Save authenticated session
+  A-->>B: User + renewed token + cookie
+  B->>A: Private history/stats/CSV OR owner write + CSRF
+  A->>D: Session validation + owner-filtered SQL
+  A-->>B: Own data /401 /403 /404
+  B->>A: POST logout + cookie + CSRF
+  A->>D: Destroy current session
+  A-->>B: 204, clear cookie
+  Note over A,D: Password change locks user, updates hash, deletes all own sessions
+```
+
+## Verification boundary
+
+Diagram ตรวจจาก source และ migrations ไม่ได้ยืนยัน production schema ทุก column ด้วย information_schema ไม่ใช่ผล penetration test Online build/migration/health/cookie flags/Login UI ตรวจแล้ว; authenticated live flows, phone QR scan และ CI run ยังต้องตรวจตาม TESTING.md / RENDER.md

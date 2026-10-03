@@ -1,6 +1,6 @@
 # Link Studio · SYNERRY Full-Stack Challenge
 
-ระบบ Short URL สำหรับแบบทดสอบสหกิจ SYNERRY: สร้างลิงก์สั้นที่ redirect ได้จริง สร้าง/ดาวน์โหลด QR Code เก็บประวัติและสถิติการเปิด พร้อมหน้าจอ responsive
+ระบบจัดการ Short URL แบบมีบัญชีส่วนตัวสำหรับแบบทดสอบสหกิจ SYNERRY: สร้าง/แก้ชื่อและปลายทาง, Tags, expiry, เปิด/ปิดลิงก์, QR, Preview, My links, Analytics, CSV, Profile และ AI assistant แบบ optional
 
 **Stack:** React 19 + TypeScript + Vite / Node.js 22 + Express 5 + TypeScript / PostgreSQL 17
 
@@ -20,11 +20,27 @@ UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพ�
 
 GitHub Actions workflow จะรัน typecheck/build/integration tests ด้วย PostgreSQL แยกหลัง push; ยังไม่อ้างว่ารันบน GitHub ผ่านจนกว่าจะมีผล CI จริง
 
+## เอกสารระบบสำหรับผู้ตรวจ
+
+| เอกสาร | เนื้อหา |
+|---|---|
+| [System design](docs/SYSTEM.md) | ขอบเขตทุกฟังก์ชัน, architecture, privacy และนิยามสถิติ |
+| [DFD / ER / Architecture / sequences](docs/DIAGRAMS.md) | กระบวนการและ data flows; source `.mmd` ใน docs/diagrams |
+| [Database design](docs/DATABASE.md) | 4 ตาราง, ทุก column/type/PK/FK/default/index และ migrations 001–006 |
+| [API reference](docs/API.md) | ทุก endpoint จริง, access/CSRF, validation และ response contract |
+| [Testing](docs/TESTING.md) / [Render](docs/RENDER.md) | แยก local checks, online checks และสิ่งที่ยังไม่ได้ยืนยัน |
+| [Presentation](docs/PRESENTATION.md) | ลำดับ demo และเหตุผลการออกแบบ |
+
+ตรวจเทียบโค้ดวันที่ 2026-10-04; Diagram อธิบาย implementation ไม่ใช่คำรับรองว่า deployment ผ่านทุก flow แล้ว
+
 ## สิ่งที่ทำได้
 
 - ผู้ช่วย AI สำหรับสมาชิก: ถามวิธีใช้งาน/คิดชื่อลิงก์ พร้อมปุ่มลัดและเลือกอนุญาตส่งเฉพาะยอดรวมของตัวเอง ต้องตั้ง OpenAI API key ฝั่ง Backend ก่อนตอบจริง ดู [ขั้นตอนเปิดใช้และ API contract](docs/AI-ASSISTANT.md)
 
-- สมัครสมาชิก / Login / Logout และ My links ที่ตรวจ ownership บน backend
+- สมัครสมาชิกด้วยชื่อและยืนยันรหัสผ่าน / Login / Logout; My links ตรวจ ownership บน backend
+- Profile: เปลี่ยนชื่อ รูปโปรไฟล์ และรหัสผ่าน; เปลี่ยนรหัสยกเลิกทุก session ของเจ้าของ
+- แก้ title/ปลายทาง/private Tags และเปิด/ปิดลิงก์โดยคง code, expiry และสถิติเดิม
+- เลือกหรือพิมพ์ Tags; ค้นหาและกรองประวัติ; CSV ทุกหน้าที่ตรงตัวกรอง
 
 - สร้าง Short URL ด้วยรหัสสุ่ม 8 ตัวอักษร (48-bit randomness) และ unique constraint ใน PostgreSQL พร้อม retry เมื่อชนกัน
 - เปิด Short URL แล้ว redirect แบบ HTTP 302 ไป URL ต้นฉบับ พร้อมเก็บเหตุการณ์เปิดในฐานข้อมูล
@@ -66,13 +82,11 @@ NODE_ENV=development
 TRUST_PROXY_HOPS=0
 DATABASE_SSL=false
 SESSION_SECRET=replace-with-a-generated-random-secret
-AUTH_ORIGIN=http://localhost:5173
-SESSION_SECRET=REPLACE_WITH_YOUR_GENERATED_RANDOM_SECRET
+SESSION_TTL_HOURS=8
 AUTH_ORIGIN=http://localhost:5173
 ```
 
 ```sh
-node scripts/configure-session-secret.mjs
 node scripts/configure-session-secret.mjs
 npm run db:migrate
 npm run dev
@@ -125,7 +139,7 @@ npm run build
 npm test
 ```
 
-Integration tests ใช้ PostgreSQL จริงผ่าน `TEST_DATABASE_URL` ต้องเป็นฐานข้อมูล local (`localhost`, `127.0.0.1` หรือ `::1`) ชื่อลงท้าย `_test` และตั้ง `TEST_DATABASE_RESET=true` ใน `backend/.env` เมื่อยืนยันว่าเป็นฐานข้อมูลที่ล้างได้แล้วเท่านั้น **Tests จะลบข้อมูลทั้งหมดในตาราง links/click_events ของฐานข้อมูลทดสอบ** ห้ามใช้ฐานข้อมูลใช้งานจริง Tests ปฏิเสธ remote host และ application database เดียวกัน; CI ใช้ฐานข้อมูลชั่วคราวพร้อม `NODE_ENV=test`
+Integration tests ใช้ PostgreSQL จริงผ่าน `TEST_DATABASE_URL` ต้องเป็นฐานข้อมูล local (`localhost`, `127.0.0.1` หรือ `::1`) ชื่อลงท้าย `_test` และตั้ง `TEST_DATABASE_RESET=true` ใน `backend/.env` เมื่อยืนยันว่าเป็นฐานข้อมูลที่ล้างได้แล้วเท่านั้น **Tests จะลบข้อมูลทั้งหมดในตาราง links/click_events/users/sessions ของฐานข้อมูลทดสอบ** ห้ามใช้ฐานข้อมูลใช้งานจริง Tests ปฏิเสธ remote host และ application database เดียวกัน; CI ใช้ฐานข้อมูลชั่วคราวพร้อม `NODE_ENV=test`
 
 ครอบคลุม create → redirect → persistence, เปิดพร้อมกันโดยจำนวนไม่หาย, HEAD ไม่นับ, alias ชนพร้อมกัน, QR PNG, validation, expiry, missing link, pagination/search และสถิติ UTC
 
@@ -146,14 +160,16 @@ Suite ปัจจุบันมี 52 backend tests รวม Preview/refresh/
 
 ## API
 
+รายละเอียดรวมทุก endpoint อยู่ใน [API reference](docs/API.md) และโครงสร้างฐานข้อมูลใน [Data Dictionary](docs/DATABASE.md)
+
 ### Login + My links
 
 ใช้ [Passport Local](https://www.passportjs.org/packages/passport-local/) ตรวจ email/password, [express-session](https://expressjs.com/en/resources/middleware/session/) และ [connect-pg-simple](https://github.com/voxpelli/node-connect-pg-simple) สำหรับ server-side session ใน PostgreSQL, [bcryptjs](https://github.com/dcodeIO/bcrypt.js) hash cost 12 และ [csrf-sync](https://github.com/Psifi-Solutions/csrf-sync) สำหรับ synchronizer token ไม่เขียน encryption/password hashing เอง ไม่ใช้ MemoryStore หรือเก็บ token/password ใน localStorage
 
 | Method | Endpoint | Contract |
 |---|---|---|
-| GET | `/api/auth/session` | Public bootstrap: `{user: {id,email} หรือ null, csrfToken, expiresAt}`; no-store |
-| POST | `/api/auth/register` | `{email,password}` + `X-CSRF-Token`; 200 และ Login หลังสมัคร, 400 invalid, 409 สมัครไม่ได้, 429 rate limit |
+| GET | `/api/auth/session` | Public bootstrap: `{user: {id,email,displayName,avatarUrl} หรือ null, csrfToken, expiresAt}`; no-store |
+| POST | `/api/auth/register` | `{email,password,displayName?}` + `X-CSRF-Token`; 200 และ Login หลังสมัคร, 400 invalid, 409 สมัครไม่ได้, 429 rate limit |
 | POST | `/api/auth/login` | `{email,password}` + token; 200, 401 generic incorrect credentials, 429 rate limit |
 | POST | `/api/auth/logout` | Login + token; 204 ลบ session ใน DB และ clear cookie |
 
@@ -171,7 +187,7 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 
 หลัง migration บนฐานข้อมูลที่ได้รับอนุญาต รัน `npm run demo:users` สร้าง `demo-a@linkstudio.example` และ `demo-b@linkstudio.example` ด้วยรหัสสุ่ม บันทึกรหัสจริงเฉพาะ `tmp/demo-accounts-<timestamp>.txt` ที่ gitignore ไม่พิมพ์รหัสใน console ไม่เปลี่ยนรหัสบัญชีเดิม ส่ง credentials ให้ผู้ตรวจผ่านช่องทางส่วนตัวเมื่อพร้อม ไม่มีรหัส demo จริงใน Git
 
-รอบนี้สร้าง demo ใน **local QA database** ที่ `http://localhost:3111` เท่านั้น ฐานข้อมูล Supabase ยังไม่ได้ migration หรือสร้าง demo เพราะ automatic approval review ปฏิเสธการเปลี่ยน schema/RLS ของฐานข้อมูลใช้งานจริง ต้องได้รับอนุมัติก่อน SQL ที่จะใช้คือ `backend/migrations/002_auth.sql`
+บัญชี demo ที่มีหลักฐานก่อนหน้าอยู่ใน local QA เท่านั้น ไม่ยืนยันว่ามีบัญชี demo บน production. Render startup รัน migrations 001–006 สำเร็จเมื่อ 2026-10-04; ยังไม่ได้ตรวจ Login และ demo credentials จริงบนเว็บออนไลน์ ไม่บันทึกรหัสผ่านผู้ตรวจใน repository
 
 ### ดาวน์โหลดประวัติ CSV
 
@@ -196,10 +212,12 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 | PATCH | `/api/links/:code` | เจ้าของ + CSRF; แก้ `title`, `originalUrl` และ/หรือ private `tags`; 200, invalid 400, auth 401/403, not owned/missing 404, rate limit 429; คง Short URL/QR/expiry/events ดู [Edit link](docs/LINK-EDITING.md) |
 | GET | `/api/links?page=1&limit=10&q=keyword&tag=campaign` | My links ของเจ้าของที่ Login (limit 1–50); anonymous: 401 |
 | GET | `/api/links/export.csv?q=keyword&tag=campaign` | ดาวน์โหลดMy links ของผู้ใช้ที่ Loginทุกหน้าตามคำค้นและ Tag; 400 invalid, 413 เกิน 10,000 รายการ |
+| GET | `/api/tags` | ต้อง Login; คืน Tags ของเจ้าของเท่านั้น |
+| PATCH | `/api/links/:code/status` | เจ้าของ + CSRF; `{isActive:true/false}` แบบ explicit; คง expiry/events |
 | GET | `/api/stats` | สถิติของเจ้าของที่ Login และ 7 วัน (UTC); anonymous: 401 |
 | GET | `/api/links/:code` | รายละเอียด/จำนวนคลิกเฉพาะเจ้าของ; ของผู้อื่น: 404, anonymous: 401 |
 | GET | `/api/links/:code/qr` | QR PNG; เพิ่ม `?download=1` เพื่อดาวน์โหลด |
-| GET | `/api/links/:code/preview` | Metadata ปลายทางและ active/expired; ไม่พบ: 404; ไม่นับเปิด |
+| GET | `/api/links/:code/preview` | Metadata ปลายทางและ active/disabled/expired; ไม่พบ: 404; ไม่นับเปิด |
 | GET | `/preview/:code` | หน้า Preview: 200 active, 404 missing, 410 disabled/expired; ไม่นับเปิด |
 | GET | `/:code` | 302 redirect, 404 ไม่พบ, 410 ปิดใช้งานหรือหมดอายุ |
 | HEAD | `/:code` | ตรวจปลายทางโดยไม่นับเปิด |
@@ -244,7 +262,11 @@ backend/
 frontend/
   src/             React UI, typed API client, responsive CSS
 docs/
+  SYSTEM.md         ขอบเขตฟังก์ชันและการออกแบบระบบปัจจุบัน
+  DATABASE.md       Data Dictionary, PK/FK/index และ migrations
+  API.md            ทุก endpoint จริงและ access contract
   DIAGRAMS.md       DFD Level 0, ER Diagram, Architecture Diagram
+  diagrams/         Mermaid sources และ SVG สำหรับนำเสนอ
   DEPLOYMENT.md     Environment และ checklist ก่อนส่ง URL
   PRESENTATION.md   ลำดับสาธิตและอธิบายการตัดสินใจ
   TESTING.md        วิธีทดสอบและขอบเขตหลักฐาน
@@ -254,11 +276,11 @@ Diagram แสดงได้บน GitHub ผ่าน Mermaid: [DFD, ER แล
 
 ## การตัดสินใจสำคัญ
 
-- **Modular monolith:** แยก UI/API/database ชัดเจน แต่ deploy แอปหนึ่ง service เพื่อให้เหมาะกับเวลาสามวัน ไม่อ้างว่าเป็น microservices คะแนนเสริมข้อนี้ยังไม่ได้ทำ
+- **Modular monolith:** แยก UI/API/database ชัดเจน แต่ deploy แอปหนึ่ง service เพื่อให้ดูแลและส่งมอบได้ง่าย ไม่อ้างว่าเป็น microservices
 - **302 + no-store:** การเปิดแต่ละครั้งมาถึง server จึงบันทึกจำนวนได้ ไม่ใช้ permanent redirect ที่ browser อาจ cache
 - **Click events แทน read-modify-write counter:** แต่ละ GET insert event อิสระ ไม่เกิด lost update จาก concurrent requests และนำไปทำกราฟรายวันได้
 - **QR จาก backend:** ผู้ใช้ดาวน์โหลดได้โดยไม่เรียกบริการ QR ภายนอก ไม่มี third-party tracking
-- **เวลา:** เก็บ `TIMESTAMPTZ` ใน DB, แสดงวันที่ตามเครื่องผู้ใช้, สถิติรายวันกำหนด UTC ชัดเจน
+- **เวลา:** links/users/events เก็บ `TIMESTAMPTZ`, แสดงวันที่ตามเครื่องผู้ใช้, CSV/สถิติรายวันใช้ UTC; `sessions.expire` ใช้ `TIMESTAMP(6)` without time zone ตาม session store
 - **ความล้มเหลว DB:** ถ้าบันทึก event ไม่สำเร็จ ระบบตอบ error แทน redirect เพื่อไม่รายงานว่าการเปิดที่ไม่นับถูกบันทึกแล้ว; ระบบระดับใหญ่ควรใช้ queue และกำหนดนโยบายความแม่นยำเพิ่มเติม
 - **ความปลอดภัย:** รับเฉพาะ http(s) ไม่รับ credential ใน URL ไม่ fetch destination ที่ server จึงไม่สร้าง SSRF จากการตรวจลิงก์ ไม่ใช้ Host header สร้าง Short URL แต่ใช้ origin ที่ตั้งค่าไว้
 
@@ -267,7 +289,7 @@ Diagram แสดงได้บน GitHub ผ่าน Mermaid: [DFD, ER แล
 1. Push repository ที่ผู้ตรวจเข้าถึงได้ (ตรวจว่า `.env` และ database files ไม่ถูก track)
 2. ตั้งค่าและทดสอบระบบที่ HTTPS URL จริง
 3. ตรวจ QR ด้วยมือถือและยืนยันว่าจำนวนเปิดเพิ่มในประวัติ
-4. ส่ง repository URL + live URL; ระบบนี้ไม่มี login จึงไม่ต้องส่ง username/password
+4. ส่ง repository URL + live URL และบัญชี demo ให้ผู้ตรวจผ่านช่องทางส่วนตัว ระบบมี Login; ไม่ commit รหัสผ่านจริง และยังไม่ยืนยันว่าบัญชี demo บน production ถูกจัดเตรียมแล้ว
 5. เตรียมสาธิตตาม [PRESENTATION.md](docs/PRESENTATION.md) ไม่เกิน 30 นาที
 
 ## Workspace และ Profile
@@ -280,7 +302,7 @@ Profile แก้ชื่อที่แสดงได้ 1–80 ตัวอ�
 
 | API | Contract |
 |---|---|
-| PATCH /api/auth/profile | ต้อง Login + CSRF; `{ "displayName": "Nicky" }`; ส่งกลับ `{ user: { id, email, displayName } }` แก้ได้เฉพาะสมาชิกปัจจุบัน ไม่รับ user ID/email |
+| PATCH /api/auth/profile | ต้อง Login + CSRF; `{ "displayName": "Nicky" }`; ส่งกลับ `{ user: { id, email, displayName, avatarUrl } }` แก้ได้เฉพาะสมาชิกปัจจุบัน ไม่รับ user ID/email |
 | POST /api/auth/password | ต้อง Login + CSRF; `{ "currentPassword": "...", "newPassword": "..." }`; รหัสต้องต่างกัน 10+ ตัวอักษร ไม่เกิน 72 UTF-8 bytes; จำกัด 20 ครั้ง/15 นาที/IP; สำเร็จ 204 และให้ Login ใหม่ |
 
 เปลี่ยนรหัสตรวจ bcrypt hash ของรหัสเดิมใน transaction พร้อมล็อกแถวสมาชิก อัปเดต hash ใหม่และลบ session ทุกเครื่องของเจ้าของเท่านั้น จากนั้นล้าง cookie ไม่เปลี่ยนเจ้าของลิงก์หรือสถิติ ไม่เพิ่ม email change, password reset, social login หรือ workspace ร่วม

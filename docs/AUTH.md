@@ -19,7 +19,7 @@ Migration 002 adds nullable ownership without rewriting legacy rows. No claiming
 
 Local tests require a disposable loopback _test database and TEST_DATABASE_RESET=true; production/remote URLs are rejected before migration/TRUNCATE. Tests now clear users/sessions as well as links/events only in that isolated DB. Auth regressions cover A/B, anonymous access, forged owner input, private code/ID lookup, CSRF/cross-origin, session ID rotation, generic login errors, hashing, logout replay, expiry and migration from the original schema.
 
-Limits: no verified emails, password recovery or account deletion. Rate-limit stores are per process, not a distributed defence. Public URLs/Preview are intentionally shareable and do not certify destination safety. Credentials/legacy migration in hosted Supabase are pending explicit approval; local QA accounts are ready and passwords are only in ignored tmp files. Production HTTPS cookies were checked with local proxy simulation, not a deployed HTTPS host. No penetration test or online deployment is claimed.
+Limits: no verified emails, password recovery or account deletion. Rate-limit stores are per process, not a distributed defence. Public URLs/Preview are intentionally shareable and do not certify destination safety. Hosted migrations completed on Render on 2026-10-04. HTTPS auth bootstrap was checked online with Secure/HttpOnly/__Host cookie flags; successful account login/logout and A/B isolation on the deployed host remain unverified. Local QA credentials remain in ignored tmp only; no production demo credentials are claimed. No penetration test is claimed. See RENDER.md for dated evidence.
 
 ## Profile / password update
 

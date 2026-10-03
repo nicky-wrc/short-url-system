@@ -1,0 +1,33 @@
+erDiagram
+  USERS o|..o{ LINKS : owns_nullable_legacy
+  LINKS ||..o{ CLICK_EVENTS : records
+  USERS {
+    bigint id PK "generated always identity"
+    varchar254 email UK "NOT NULL"
+    text password_hash "NOT NULL; bcrypt cost12"
+    timestamptz created_at "NOT NULL; NOW()"
+    varchar80 display_name "NOT NULL; default empty"
+    bytea avatar_image "nullable; WebP <=262144 bytes"
+    uuid avatar_version "nullable; paired with image"
+  }
+  LINKS {
+    bigint id PK "generated always identity"
+    varchar32 code UK "NOT NULL; regex4-32; random8"
+    text original_url "NOT NULL; length1-2048"
+    varchar120 title "NOT NULL; default empty"
+    timestamptz created_at "NOT NULL; NOW()"
+    timestamptz expires_at "nullable; NULL means never"
+    bigint owner_id FK "nullable; ON DELETE SET NULL"
+    boolean is_active "NOT NULL; default true"
+    text_array tags "NOT NULL; default empty; private"
+  }
+  CLICK_EVENTS {
+    bigint id PK "generated always identity"
+    bigint link_id FK "NOT NULL; ON DELETE CASCADE"
+    timestamptz opened_at "NOT NULL; NOW()"
+  }
+  SESSIONS {
+    varchar sid PK "unbounded varchar"
+    json sess "NOT NULL; user ID / CSRF / authExpiresAt / cookie"
+    timestamp6 expire "NOT NULL; WITHOUT TIME ZONE"
+  }

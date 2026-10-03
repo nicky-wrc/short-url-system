@@ -19,7 +19,7 @@ Production Secure cookies require HTTPS and correctly configured TRUST_PROXY_HOP
    - `AUTH_ORIGIN`: browser HTTPS origin; local Vite uses http://localhost:5173
    - `PORT`: ใช้ค่าที่ host จัดให้ Express bind `0.0.0.0`
    - `TRUST_PROXY_HOPS`: จำนวน reverse proxies ที่เชื่อถือและรู้ topology จริง ใช้ 0 local / 1 เมื่อมี proxy เดียว อย่าตั้ง true แบบไม่จำกัด
-   - `DATABASE_SSL=true` เมื่อ host ต้องใช้ TLS; ถ้ามี private CA ให้ตั้ง `NODE_EXTRA_CA_CERTS` ตามคู่มือ host ห้ามแก้เป็น `rejectUnauthorized: false`
+   - `DATABASE_SSL=true` เมื่อ host ต้องใช้ TLS; ถ้ามี CA ที่ provider กำหนดให้ตั้ง `DATABASE_SSL_CA_FILE` ซึ่ง resolve จาก backend/ ห้ามแก้เป็น `rejectUnauthorized: false`
 4. Build: `npm ci && npm run build`
 5. Pre-deploy: `node backend/dist/migrate.js`
 6. Start: `node backend/dist/server.js` หรือรวม migration ใน start เมื่อ host ไม่มี pre-deploy hook
@@ -54,12 +54,12 @@ Build Dockerfile ที่ root ตั้ง env ชุดเดียวกั�
 
 ## ข้อจำกัดและการต่อยอด
 
-- Demo เปิด workspace สาธารณะ: ถ้าจะใช้หลายลูกค้าจริง ต้องเพิ่ม authentication, ownership และ authorization ทุก API
-- Rate limit อยู่ใน memory ของ service และใช้กับ POST เท่านั้น; หลาย instance ต้องใช้ distributed store และเพิ่ม read/redirect abuse controls
+- Workspace เป็นส่วนตัว: authentication/ownership มีแล้วใน backend; Short URL/Preview/QR สาธารณะโดยตั้งใจ ต้องเพิ่ม abuse controls และทบทวนสิทธิ์ก่อนรับ workload ขนาดใหญ่
+- Rate limit อยู่ใน memory ของ service ใช้กับ auth/password/avatar/create/edit/AI แต่ไม่ครอบคลุมทุก read/redirect/status/profile endpoint; หลาย instance ต้องใช้ distributed store
 - จำนวนเปิดรวม repeated GET และ bots ไม่ทำ unique visitor analytics
 - Aggregation ของ events เหมาะกับ demo; ข้อมูลใหญ่ต้องปรับ SQL/index, rollup รายวัน, retention และ async queue
 - ระบบไม่ตรวจว่า URL ปลายทางออนไลน์หรือเป็น phishing: ไม่ fetch URL เพื่อหลีกเลี่ยง SSRF; public production ต้องมี abuse reporting/moderation
-- ไม่รองรับแก้ปลายทาง/ลบลิงก์จาก UI จึงลด scope และผลกระทบจาก shared workspace
+- เจ้าของแก้ชื่อ/ปลายทาง/Tags และปิด/เปิดได้แล้ว; การแก้ปลายทางมีผลต่อผู้รับในอนาคต URL/QR เดิมอยู่ ไม่รองรับลบลิงก์/บัญชีหรือ edit audit log
 - Free host อาจ sleep หรือเปลี่ยนข้อจำกัด ควรตรวจ availability ก่อนวันนำเสนอ
 
 ## Render Free + Supabase
