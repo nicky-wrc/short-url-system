@@ -48,3 +48,11 @@ No migration is needed because users.display_name already exists.
 - `DELETE /api/auth/avatar`: authenticated + CSRF; idempotently clears own photo and returns `{user}` with avatarUrl null.
 - PUT/DELETE share a 20 requests / 15 minutes / IP limiter. Anonymous or expired sessions receive 401; missing CSRF 403; invalid image 400; unsupported MIME 415; oversized body 413; rate limit 429. Errors use the existing sanitized error handler.
 - Client-supplied user IDs never select another account. PostgreSQL stores normalized 256×256 WebP bytes and a random version UUID, bounded by migration 005. No original file name or EXIF is retained. Photos do not appear on public links/Preview. Sharp is a backend dependency; no new environment keys are required.
+
+## Configured reviewer provisioning
+
+npm run demo:users can read DEMO_REVIEWER_EMAIL/PASSWORD/NAME from backend/.env. Both email/password required when either is configured; values validated without logging. Bcrypt12 and INSERT ON CONFLICT DO NOTHING preserve existing accounts. It creates one ordinary member in the selected DATABASE_URL, not an admin or special env-based login. No startup auto-provision/reset. Remove plaintext reviewer password from local environment after provisioning if desired. Blank email/password retain original two randomly generated demo accounts. Real reviewer passwords never belong in example files, README, Git or chat.
+
+### Reviewer provisioning verified — 2026-10-04
+
+สร้างบัญชีผู้ตรวจจาก backend/.env ในฐานข้อมูลที่แอปใช้แล้ว ตรวจ Login ผ่าน HTTPS API ของ https://synerry-link-studio.onrender.com สำเร็จและ displayNameตรง จากนั้นLogout sessionตรวจสำเร็จ204. เป็นสมาชิกปกติ ไม่มีสิทธิ์admin/ข้อมูลของคนอื่น. ไม่บันทึกemail/passwordจริงในเอกสารหรือGit. เป็นAPIcheckเท่านั้น ยังไม่ได้ตรวจbrowserของCEOหรือรับรองflowทั้งหมด. การสร้างบัญชีนี้ไม่ใช่deployment/migration007 verification.

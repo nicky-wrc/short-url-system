@@ -248,9 +248,29 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 
 ### บัญชี demo สำหรับผู้ตรวจ
 
+กำหนดบัญชีเฉพาะ CEO/ผู้ตรวจได้ใน backend/.env บนเครื่อง (ไม่ commit):
+
+```dotenv
+DEMO_REVIEWER_EMAIL=reviewer@example.com
+DEMO_REVIEWER_PASSWORD=SET_A_PRIVATE_PASSWORD_HERE
+DEMO_REVIEWER_NAME=CEO Reviewer
+```
+
+เปลี่ยน email/name และรหัส placeholder เป็นค่าจริงใน editor. Password อย่างน้อย10ตัวอักษรและไม่เกิน72UTF-8bytes. แล้วรัน:
+
+```powershell
+npm run db:migrate
+npm run demo:users
+```
+
+Script ใช้ DATABASE_URL ในbackend/.env: ถ้าชี้SupabaseเดียวกับRender บัญชีจะใช้เว็บออนไลน์นั้นได้. ไม่พิมพ์/เขียนรหัสที่กำหนดในenvไปconsole/tmp และเก็บในusersเป็นbcrypthash. บัญชีReviewerเป็นสมาชิกปกติ ไม่มีadminสิทธิ์หรือสิทธิ์ดูMy linksของคนอื่น. Emailที่มีอยู่จะไม่เปลี่ยนชื่อ/รหัส; แก้envไม่เปลี่ยนรหัสบัญชีที่สร้างแล้ว. ไม่อ่านenvเป็นบัญชีLoginพิเศษและไม่สร้างทุกครั้งที่startup. ลบDEMO_REVIEWER_PASSWORDจากenvได้หลังสร้าง โดยบัญชียังLoginได้. ค่านี้ไม่ต้องใส่Renderถ้ารันscriptจากเครื่องที่เชื่อมฐานข้อมูลเดียวกัน. ถ้าใช้DBคนละตัว บัญชีจะมีเฉพาะDBที่รันscript.
+
+ถ้าไม่กำหนดDEMO_REVIEWER_EMAIL/PASSWORD ทั้งคู่ scriptยังใช้โหมดสุ่มสองบัญชีด้านล่าง:
+
+
 หลัง migration บนฐานข้อมูลที่ได้รับอนุญาต รัน `npm run demo:users` สร้าง `demo-a@linkstudio.example` และ `demo-b@linkstudio.example` ด้วยรหัสสุ่ม บันทึกรหัสจริงเฉพาะ `tmp/demo-accounts-<timestamp>.txt` ที่ gitignore ไม่พิมพ์รหัสใน console ไม่เปลี่ยนรหัสบัญชีเดิม ส่ง credentials ให้ผู้ตรวจผ่านช่องทางส่วนตัวเมื่อพร้อม ไม่มีรหัส demo จริงใน Git
 
-บัญชี demo ที่มีหลักฐานก่อนหน้าอยู่ใน local QA เท่านั้น ไม่ยืนยันว่ามีบัญชี demo บน production. Render startup รัน migrations 001–007 สำเร็จเมื่อ 2026-10-04; ยังไม่ได้ตรวจ Login และ demo credentials จริงบนเว็บออนไลน์ ไม่บันทึกรหัสผ่านผู้ตรวจใน repository
+บัญชี demo ที่มีหลักฐานก่อนหน้าอยู่ใน local QA เท่านั้น ไม่ยืนยันว่ามีบัญชี demo บน production. Render startup เคยรัน migrations 001–006 สำเร็จเมื่อ 2026-10-04; migration007ยังต้องdeployหรือรันเอง; ยังไม่ได้ตรวจ Login และ demo credentials จริงบนเว็บออนไลน์ ไม่บันทึกรหัสผ่านผู้ตรวจใน repository
 
 ### ดาวน์โหลดประวัติ CSV
 
@@ -431,3 +451,7 @@ A shared `frontend/src/components/ui/morph-loading.tsx` adapts the supplied four
 ## Render deployment
 
 Deploy one Free Node web service with the existing Supabase database using render.yaml. Read [step-by-step Render setup](docs/RENDER.md). Secrets stay in Render Environment; HTTPS origin is supplied automatically by Render through scripts/start-render.mjs. [Live application](https://synerry-link-studio.onrender.com) was verified on 2026-10-04 for build/startup, hosted migration, database health, production cookie flags and Login UI. Authenticated end-to-end flows and physical QR scanning remain unverified online.
+
+### Reviewer provisioning verified — 2026-10-04
+
+สร้างบัญชีผู้ตรวจจาก backend/.env ในฐานข้อมูลที่แอปใช้แล้ว ตรวจ Login ผ่าน HTTPS API ของ https://synerry-link-studio.onrender.com สำเร็จและ displayNameตรง จากนั้นLogout sessionตรวจสำเร็จ204. เป็นสมาชิกปกติ ไม่มีสิทธิ์admin/ข้อมูลของคนอื่น. ไม่บันทึกemail/passwordจริงในเอกสารหรือGit. เป็นAPIcheckเท่านั้น ยังไม่ได้ตรวจbrowserของCEOหรือรับรองflowทั้งหมด. การสร้างบัญชีนี้ไม่ใช่deployment/migration007 verification.

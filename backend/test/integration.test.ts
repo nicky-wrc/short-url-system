@@ -1060,6 +1060,22 @@ test('saved chat pairs are private, server-authoritative, deletable with CSRF an
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM chat_conversations')).rows[0].n,count);
 });
 
+test('configured reviewer creates a normal hashed account once and never resets existing credentials', async () => {
+  const {configuredReviewerAccount,createReviewerAccount}=await import('../src/demo-account.js');
+  assert.equal(configuredReviewerAccount({}),null);
+  assert.throws(()=>configuredReviewerAccount({DEMO_REVIEWER_EMAIL:'valid@example.test'}));
+  assert.throws(()=>configuredReviewerAccount({DEMO_REVIEWER_EMAIL:'valid@example.test',DEMO_REVIEWER_PASSWORD:'ก'.repeat(25)}));
+  const account=configuredReviewerAccount({DEMO_REVIEWER_EMAIL:'CEO-Test@example.test',DEMO_REVIEWER_PASSWORD:'local-test-only-12345',DEMO_REVIEWER_NAME:'CEO Reviewer'})!;
+  assert.equal(account.email,'ceo-test@example.test');
+  assert.equal(await createReviewerAccount(account),true);
+  const {default:bcrypt}=await import('bcryptjs');
+  const initial=(await pool.query('SELECT password_hash,display_name FROM users WHERE email=$1',[account.email])).rows[0];
+  assert.equal(await bcrypt.compare(account.password,initial.password_hash),true);assert.equal(initial.display_name,'CEO Reviewer');
+  assert.equal(await createReviewerAccount({...account,password:'different-test-only-123',displayName:'Changed'}),false);
+  const repeated=(await pool.query('SELECT password_hash,display_name FROM users WHERE email=$1',[account.email])).rows[0];
+  assert.deepEqual(repeated,initial);
+});
+
 test('assistant timeouts and network failures are sanitized and expired sessions cannot ask', async () => {
   const timeout=assistantTestApp({timeoutMs:10,fetcher:async(_url,init)=>new Promise((_resolve,reject)=>{init!.signal!.addEventListener('abort',()=>reject(new Error('private upstream details')),{once:true});})});
   const timed=await request(timeout).post('/api/assistant/chat').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(question).expect(504); assert.ok(!timed.text.includes('private'));
