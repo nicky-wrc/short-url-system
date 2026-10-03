@@ -16,7 +16,7 @@ flowchart LR
     P4(("4.0 ประวัติและสถิติ"))
     P5(("5.0 Preview ปลายทาง"))
     P6(("6.0 Register / Login / Logout / Profile / CSRF"))
-    P7(("7.0 Owner link status"))
+    P7(("7.0 Owner link status / name / destination / private tags"))
     P8(("8.0 AI assistant: session + CSRF"))
     AI["OpenAI Responses API"]
     D1[("D1: Links")]
@@ -36,11 +36,11 @@ flowchart LR
     P8 -->|"curated guide + conversation + optional own totals; store:false"| AI
     AI -->|"plain text response / safe error"| P8
     P8 -->|"answer or unavailable/limit error; no mutations/events"| U
-    U -->|"code + explicit isActive true/false"| P7
-    P7 <-->|"UPDATE only code + owner_id; preserve expiry/events"| D1
-    P7 -->|"confirmed status / auth or not-found error"| U
+    U -->|"code + explicit isActive OR editable title/originalUrl/tags"| P7
+    P7 <-->|"owner-filtered UPDATE; preserve code, QR, expiry/events"| D1
+    P7 -->|"confirmed saved link / validation, auth or not-found error"| U
     P6 -->|"cookie / token / own profile / error"| U
-    U -->|"URL ต้นฉบับ, ชื่อ, alias, expiryPreset หรือ custom expiresAt"| P1
+    U -->|"URL ต้นฉบับ, ชื่อ, private tags, alias, expiryPreset หรือ custom expiresAt"| P1
     P1 -->|"ข้อมูลลิงก์ที่ตรวจสอบแล้ว"| D1
     D1 -->|"รหัสซ้ำ / ข้อมูลลิงก์"| P1
     P1 -->|"Short URL / validation error"| U
@@ -51,7 +51,7 @@ flowchart LR
     U -->|"รหัสลิงก์ที่ต้องการ QR"| P3
     D1 -->|"รหัสลิงก์ที่มีอยู่"| P3
     P3 -->|"PNG เข้ารหัส Short URL"| U
-    U -->|"คำค้นและเลขหน้า / ขอข้อมูลสถิติ / export CSV ทุกหน้า"| P4
+    U -->|"คำค้น, Tag และเลขหน้า / ขอข้อมูลสถิติ / export CSV ทุกหน้า"| P4
     D1 -->|"รายการและสถานะลิงก์"| P4
     D2 -->|"จำนวนเปิดและวันที่เปิด"| P4
     P4 -->|"My links / owner stats / private CSV หรือ limit error"| U
@@ -117,6 +117,7 @@ erDiagram
         timestamptz expires_at "nullable"
         bigint owner_id FK "ON DELETE SET NULL"
         boolean is_active "NOT NULL DEFAULT TRUE"
+        text_array tags "NOT NULL DEFAULT empty; owner-only"
     }
     CLICK_EVENTS {
         bigint id PK "identity"
@@ -214,3 +215,8 @@ sequenceDiagram
 ### Link status migration
 
 `004_link_status.sql` adds links.is_active=true for old rows, including ownerless links. Owners PATCH explicit target state; no click events or expiry are rewritten. Disabled is displayed before Expired, then Active. Public QR keeps the same short URL; public Preview metadata indicates unavailable and GET/HEAD redirect returns 410 without Location/event. Redirect holds a share row lock through validation/event commit so status updates are serialized.
+
+
+### Private tags migration
+
+006_link_tags.sql adds links.tags (text array, default empty) and a GIN index; no new table. P1/P7 write validated owner tags; P4 returns owner tag choices and filters history/CSV by search AND one tag. Public Preview and QR exclude tags. AI opt-in totals exclude tag names. Global owner statistics remain unfiltered; filtering affects My links and CSV only.

@@ -13,6 +13,7 @@ import { clock } from './clock.js';
 import { CSV_EXPORT_LIMIT, linksCsv } from './csv.js';
 import { sessionMiddleware, passport, expireSession, authRouter, requireAuth, protectWrite } from './auth.js';
 import { createAssistantRouter } from './assistant.js';
+import { tagSchema, tagsSchema } from './tags.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -35,12 +36,17 @@ function parseHttpDestination(value: string) {
   }
   return url;
 }
-const createSchema = z.object({
-  originalUrl: z.string().trim().min(1).max(2048).refine(value => {
+const destinationSchema = z.string().trim().min(1).max(2048).refine(value => {
     try { parseHttpDestination(value); return true; }
     catch { return false; }
-  }, 'Enter a valid http:// or https:// URL without credentials (maximum 2048 characters after encoding).'),
-  title: z.string().trim().max(120).default(''),
+  }, 'Enter a valid http:// or https:// URL without credentials (maximum 2048 characters after encoding).');
+const titleSchema = z.string().trim().max(120);
+const editSchema = z.object({ originalUrl: destinationSchema.optional(), title: titleSchema.optional(), tags: tagsSchema.optional() }).strict()
+  .refine(value => value.originalUrl !== undefined || value.title !== undefined || value.tags !== undefined, 'Send a title, destination or tags to update.');
+const createSchema = z.object({
+  originalUrl: destinationSchema,
+  title: titleSchema.default(''),
+  tags: tagsSchema.default([]),
   customAlias: z.string().trim().regex(codePattern, 'Use 4–32 letters, numbers, hyphens or underscores.').optional(),
   expiresAt: z.iso.datetime({ offset: true }).optional(),
   expiryPreset: z.enum(['none', '1h', '1d', '7d', 'custom']).optional(),
@@ -54,12 +60,13 @@ const createSchema = z.object({
 });
 const expiryDurations = { '1h': 3_600_000, '1d': 86_400_000, '7d': 604_800_000 };
 const searchSchema = z.string().trim().max(120).default('');
-const historyFilter = 'WHERE owner_id = $2 AND (title ILIKE $1 OR original_url ILIKE $1 OR code ILIKE $1)';
+const historyFilter = 'WHERE owner_id = $2 AND (title ILIKE $1 OR original_url ILIKE $1 OR code ILIKE $1) AND ($3::text IS NULL OR tags @> ARRAY[$3::text])';
 const searchPattern = (q: string) => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 
 const shapeLink = (row: Record<string, unknown>) => ({
   id: String(row.id), code: row.code, originalUrl: row.original_url,
   title: row.title, createdAt: row.created_at, expiresAt: row.expires_at,
+  tags: row.tags ?? [],
   isActive: row.is_active, status: linkStatus(row.is_active, row.expires_at as Date | null, clock.now()),
   clicks: Number(row.clicks ?? 0), shortUrl: `${config.PUBLIC_BASE_URL}/${row.code}`,
 });
@@ -74,7 +81,7 @@ app.post('/api/links', requireAuth, protectWrite, rateLimit({ windowMs: 60_000, 
 }), async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input.' }); return; }
-  const { originalUrl, title, customAlias, expiresAt, expiryPreset } = parsed.data;
+  const { originalUrl, title, tags, customAlias, expiresAt, expiryPreset } = parsed.data;
   if (customAlias && reserved.has(customAlias.toLowerCase())) { res.status(400).json({ error: 'This alias is reserved.' }); return; }
   const destination = new URL(originalUrl);
   // Prevent chains and loops through this service's short links.
@@ -88,8 +95,8 @@ app.post('/api/links', requireAuth, protectWrite, rateLimit({ windowMs: 60_000, 
       const duration = expiryPreset && expiryPreset in expiryDurations ? expiryDurations[expiryPreset as keyof typeof expiryDurations] : undefined;
       const expiryDate = duration ? new Date(createdAt + duration) : expiresAt ? new Date(expiresAt) : null;
       if (expiryDate && expiryDate.getTime() <= createdAt) { res.status(400).json({ error: 'Expiry must be in the future.' }); return; }
-      const result = await pool.query('INSERT INTO links (code, original_url, title, expires_at, created_at, owner_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-        [code, destination.href, title, expiryDate, new Date(createdAt), req.user!.id]);
+      const result = await pool.query('INSERT INTO links (code, original_url, title, expires_at, created_at, owner_id, tags) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [code, destination.href, title, expiryDate, new Date(createdAt), req.user!.id, tags]);
       res.status(201).json(shapeLink(result.rows[0])); return;
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
@@ -107,28 +114,34 @@ app.get('/api/links', requireAuth, async (req, res) => {
     page: z.coerce.number().int().min(1).max(100000).default(1),
     limit: z.coerce.number().int().min(1).max(50).default(10),
     q: searchSchema,
+    tag: tagSchema.optional(),
   }).safeParse(req.query);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid pagination or search parameters.' }); return; }
   const { page, limit, q } = parsed.data;
   const search = searchPattern(q);
   const filter = historyFilter;
   const [items, total] = await Promise.all([
-    pool.query(`SELECT l.*, (SELECT COUNT(*) FROM click_events c WHERE c.link_id = l.id) AS clicks FROM links l ${filter} ORDER BY created_at DESC, id DESC LIMIT $3 OFFSET $4`, [search, req.user!.id, limit, (page - 1) * limit]),
-    pool.query(`SELECT COUNT(*) AS count FROM links ${filter}`, [search, req.user!.id]),
+    pool.query(`SELECT l.*, (SELECT COUNT(*) FROM click_events c WHERE c.link_id = l.id) AS clicks FROM links l ${filter} ORDER BY created_at DESC, id DESC LIMIT $4 OFFSET $5`, [search, req.user!.id, parsed.data.tag ?? null, limit, (page - 1) * limit]),
+    pool.query(`SELECT COUNT(*) AS count FROM links ${filter}`, [search, req.user!.id, parsed.data.tag ?? null]),
   ]);
   res.json({ items: items.rows.map(shapeLink), total: Number(total.rows[0].count), page, limit });
 });
 
+app.get('/api/tags', requireAuth, async (req, res) => {
+  const result = await pool.query('SELECT DISTINCT unnest(tags) AS name FROM links WHERE owner_id=$1 ORDER BY name', [req.user!.id]);
+  res.json({ tags: result.rows.map(row => row.name) });
+});
+
 app.get('/api/links/export.csv', requireAuth, async (req, res) => {
-  const parsed = z.object({ q: searchSchema }).strict().safeParse(req.query);
+  const parsed = z.object({ q: searchSchema, tag: tagSchema.optional() }).strict().safeParse(req.query);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid export search parameters.' }); return; }
   const now = clock.now();
   // One statement provides a consistent PostgreSQL snapshot; +1 detects overflow
   // without silently truncating or a separate count/read race.
   const result = await pool.query(`SELECT l.title, l.original_url, l.code, l.created_at, l.expires_at, l.is_active,
     (SELECT COUNT(*) FROM click_events c WHERE c.link_id = l.id) AS clicks
-    FROM links l ${historyFilter} ORDER BY created_at DESC, id DESC LIMIT $3`,
-    [searchPattern(parsed.data.q), req.user!.id, CSV_EXPORT_LIMIT + 1]);
+    FROM links l ${historyFilter} ORDER BY created_at DESC, id DESC LIMIT $4`,
+    [searchPattern(parsed.data.q), req.user!.id, parsed.data.tag ?? null, CSV_EXPORT_LIMIT + 1]);
   if (result.rows.length > CSV_EXPORT_LIMIT) {
     res.status(413).json({ error: `Export exceeds ${CSV_EXPORT_LIMIT.toLocaleString('en')} links. Narrow your search and try again.` }); return;
   }
@@ -181,6 +194,23 @@ app.get('/api/links/:code', requireAuth, async (req, res) => {
   if (!found.rowCount) { res.status(404).json({ error: 'Link not found.' }); return; }
   res.json(shapeLink(found.rows[0]));
 });
+// Only supplied fields change; owner filtering and PostgreSQL's row lock apply atomically.
+app.patch('/api/links/:code', requireAuth, protectWrite, rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
+  message: { error: 'Too many link edits. Please try again in a minute.' },
+}), async (req, res) => {
+  if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
+  const parsed = editSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input.' }); return; }
+  const destination = parsed.data.originalUrl === undefined ? null : new URL(parsed.data.originalUrl);
+  if (destination?.origin === config.PUBLIC_BASE_URL) { res.status(400).json({ error: 'Use a destination outside this short-link service.' }); return; }
+  const result = await pool.query(`UPDATE links SET original_url=COALESCE($1,original_url), title=COALESCE($2,title), tags=COALESCE($5::text[],tags)
+    WHERE code=$3 AND owner_id=$4
+    RETURNING links.*, (SELECT COUNT(*) FROM click_events c WHERE c.link_id=links.id) AS clicks`,
+    [destination?.href ?? null, parsed.data.title ?? null, req.params.code, req.user!.id, parsed.data.tags ?? null]);
+  if (!result.rowCount) { res.status(404).json({ error: 'Link not found.' }); return; }
+  res.json(shapeLink(result.rows[0]));
+});
+
 // Explicit target state makes retries idempotent. Owner filter is part of the UPDATE.
 app.patch('/api/links/:code/status', requireAuth, protectWrite, async (req, res) => {
   if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }

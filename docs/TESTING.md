@@ -1,5 +1,11 @@
 # Verification
 
+## Owner link editing — 2026-10-03
+
+All 52 tests passed (49 backend + 3 readiness), with typecheck and production build passing. Four new regression tests cover owner/session/CSRF restrictions, input/self-origin validation, preservation of code/QR/expiry/status/events, live Preview/history/search/CSV, repeated and partial edits, expiry boundary, concurrent separate-field changes and PostgreSQL row-lock serialization with redirects. Tests use guarded local `shorturl_ui_test`, explicit reset opt-in; Supabase/application production data and OpenAI were not used. The first run hit the existing test auth-rate-limit window; advancing the controlled test clock beyond earlier fixtures fixed isolation without changing application limits.
+
+Actual browser API checks used local `shorturl_test` and a newly created QA link only. Desktop 1440px, mobile 390px and tablet 768px: saved Thai title/query/fragment, error preserving draft, Cancel/Escape/focus trap, unchanged Save disabled, long URL without layout overflow and public Preview showing the new hostname. See [link editing](LINK-EDITING.md). No physical QR scan, deployment or native screen-reader check.
+
 ## Provider error classification — 2026-10-03
 
 Typecheck, build and all 48 tests passed (45 backend + 3 readiness). Tests use the guarded disposable `shorturl_ui_test` database on loopback port 55432; no Supabase data reset and no real OpenAI calls. The added regression covers credits, organization/project spend limits, usage limits, legacy insufficient quota, throttling, authentication/access failures, unknown codes and oversized error bodies. Provider messages containing dummy secrets never appear in returned errors. Real account billing, key permissions and a successful paid AI response remain unverified; no browser verification was performed for this backend-only error-message change.
@@ -173,3 +179,7 @@ Browser verification on the local isolated QA database: upload PNG, replace with
 - Real PostgreSQL verifies own aggregate totals and UTC expiry boundary, excludes other users and ownerless records, and chat does not change click_events. Tests cover actual mounted missing-key route, auth/CSRF/origin, strict role/owner/model validation, fixed provider URL/server key/store:false/output cap, safe upstream failures, partial/refusal output, timeout, rate limit, concurrency and expired session. Upstream responses are offline contract fixtures, not evidence of real AI quality.
 - Typecheck and normal production build passed. No schema, dependency or link endpoint changes.
 - Real OpenAI key/billing/model access and a real AI answer remain unverified because no key has been configured. Follow docs/AI-ASSISTANT.md after creating a key. No deployment or physical phone test in this task.
+
+## Private tags verification (2026-10-03)
+
+55 tests passed (52 backend plus 3 readiness). Added three tag regression cases covering owner scoping, public metadata exclusion, normalize/deduplicate/clear/reject behavior, query+tag pagination and CSV across pages, unchanged events/QR and repeated additive migrations. Extended the existing pre-auth migration fixture through 006 and verified empty tags on old rows. Disposable database: loopback port 55432, shorturl_ui_test, explicit TEST_DATABASE_RESET=true; remote/application database guards retained. Browser QA used separate persistent local shorturl_test with OpenAI disabled; no Supabase migration or reset.

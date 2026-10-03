@@ -1,5 +1,7 @@
 # Link Studio AI assistant
 
+Product guide also covers My links / Recent links → Edit for owner-only name/destination editing. The assistant only explains the steps; it does not call the editing endpoint or change links for the user. See [link editing](LINK-EDITING.md).
+
 ผู้ใช้ที่ Login แล้วเปิดปุ่ม **ผู้ช่วย AI** มุมขวาล่างเพื่อถามวิธีใช้ QR, Preview, expiry, CSV, สถิติ และให้ช่วยคิดชื่อลิงก์/ข้อความแคมเปญ ปุ่มลัดเปิดหน้าที่มีอยู่จริง แชตไม่สร้างหรือแก้ลิงก์ ไม่เรียก tools ไม่ fetch ปลายทาง และไม่เปลี่ยน click events
 
 ## เปิดใช้ครั้งแรก (ยังไม่มี API key)

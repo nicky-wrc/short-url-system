@@ -61,3 +61,7 @@ Build Dockerfile ที่ root ตั้ง env ชุดเดียวกั�
 - ระบบไม่ตรวจว่า URL ปลายทางออนไลน์หรือเป็น phishing: ไม่ fetch URL เพื่อหลีกเลี่ยง SSRF; public production ต้องมี abuse reporting/moderation
 - ไม่รองรับแก้ปลายทาง/ลบลิงก์จาก UI จึงลด scope และผลกระทบจาก shared workspace
 - Free host อาจ sleep หรือเปลี่ยนข้อจำกัด ควรตรวจ availability ก่อนวันนำเสนอ
+
+## Render Free + Supabase
+
+See [Render deployment guide](RENDER.md) and root render.yaml. Start uses scripts/start-render.mjs to derive the HTTPS origin and migrate before listening; no paid pre-deploy hook. Hosted deployment is pending dashboard setup and online verification.

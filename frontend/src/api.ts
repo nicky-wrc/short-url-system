@@ -1,6 +1,7 @@
 export interface Link {
   id: string; code: string; originalUrl: string; shortUrl: string; title: string;
   createdAt: string; expiresAt: string | null; clicks: number; isActive: boolean; status: 'active' | 'disabled' | 'expired';
+  tags: string[];
 }
 export interface LinkPage { items: Link[]; total: number; page: number; limit: number }
 export interface LinkPreview {

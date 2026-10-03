@@ -1,0 +1,29 @@
+# One free web service. Database remains in the existing Supabase project.
+services:
+  - type: web
+    name: synerry-link-studio
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node scripts/start-render.mjs
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_SSL_CA_FILE
+        value: certs/supabase-ca.crt
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_TTL_HOURS
+        value: "8"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: OPENAI_MODEL
+        value: gpt-5-mini

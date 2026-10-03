@@ -1,0 +1,2 @@
+ALTER TABLE links ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS links_tags_idx ON links USING GIN(tags);

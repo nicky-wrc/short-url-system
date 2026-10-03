@@ -1,4 +1,5 @@
 import MorphLoading from './components/ui/morph-loading';
+import { TextScrollAnimation } from './components/ui/text-scroll-animation';
 import { InteractiveHoverButton } from './components/ui/interactive-hover-button';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, LockKeyhole, Mail, UserRound } from 'lucide-react';
@@ -91,7 +92,7 @@ export function AuthApp() {
       <div className="auth-mark" aria-hidden="true"><Link2 size={28} /></div>
       <span className="section-kicker">{mode === 'login' ? 'WELCOME BACK' : 'MAKE IT YOURS'}</span>
       <h1 id="auth-title">{mode === 'login' ? 'Log in to Link Studio' : 'Create your account'}</h1>
-      <p className="auth-description">{mode === 'login' ? 'A little less link clutter. Pick up where you left off.' : 'One place for your links, QR codes and recorded opens.'}</p>
+      <TextScrollAnimation key={mode} className="auth-description" text={mode === 'login' ? 'A little less link clutter. Pick up where you left off.' : 'One place for your links, QR codes and recorded opens.'} emphasis={mode === 'login' ? ['less link clutter'] : ['your links']} />
       {loading ? <p className="auth-loading" role="status"><MorphLoading />Checking session…</p> : <>
         <ol className="auth-progress" aria-label="Account steps">
           {(mode === 'login' ? ['Account', 'Password'] : ['Account', 'Password', 'Confirm']).map((label, index) => <li key={label} aria-current={index === ['account', 'password', 'confirm'].indexOf(step) ? 'step' : undefined}><span>{String(index + 1).padStart(2, '0')}</span>{label}</li>)}

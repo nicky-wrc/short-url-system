@@ -4,6 +4,8 @@
 
 **Stack:** React 19 + TypeScript + Vite / Node.js 22 + Express 5 + TypeScript / PostgreSQL 17
 
+Login/Register ใช้ข้อความแนะนำแบบ CharacterV1 ที่ปรับให้เคลื่อนที่เบา รองรับภาษาไทยและ reduced motion โดยเลือก scroll/entrance ตามระยะเลื่อนจริง ดู [รายละเอียดและผลตรวจ](docs/TEXT-ANIMATION.md)
+
 UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพาะ actions สำคัญ และ system sans-serif ที่อ่านไทยได้ โดยไม่โหลดฟอนต์ภายนอก: `frontend/src/theme.css` เป็น tokens กลาง และ `frontend/src/styles.css` ดูแล layout/states; Overview เน้น recent owned links และข้อมูลจริงจาก API เดิม, mobile/tablet ใช้ navigation แบบเปิด/ปิดและประวัติแบบรายการ ดูผลตรวจและข้อจำกัดที่ [UI verification](docs/UI-VERIFICATION.md)
 
 | ข้อกำหนด | Implementation / หลักฐาน |
@@ -129,7 +131,7 @@ Integration tests ใช้ PostgreSQL จริงผ่าน `TEST_DATABASE_U
 
 Tests ยังถอดรหัส QR กลับเป็น short URL และตรวจ rate limit + `Retry-After`
 
-Suite ปัจจุบันมี 36 integration tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา และการจัดการรูปโปรไฟล์
+Suite ปัจจุบันมี 52 backend tests รวม Preview/refresh/QR ไม่เพิ่ม event, compatibility ของ code เดิม, expiry หลังเปิด Preview, stored URL ที่ผิด validation, query override, hostname จาก URL parser และ error ที่ไม่เปิดเผยรายละเอียดฐานข้อมูล รวมถึง expiry preset ทุกค่าและ boundary โดยควบคุมเวลา และการจัดการรูปโปรไฟล์
 
 ## Preview และการนับเปิด
 
@@ -173,9 +175,9 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 
 ### ดาวน์โหลดประวัติ CSV
 
-ปุ่ม **ดาวน์โหลด CSV** ในส่วนประวัติส่งออก **My links ของผู้ใช้ที่ Login** ทุกหน้าตามคำค้นปัจจุบัน ไม่ใช่เฉพาะหน้าที่โหลดอยู่ ต้อง Login และยังไม่มีตัวกรองเพิ่มเติมนอกเหนือจากคำค้น ปุ่มรอให้คำค้นโหลดเสร็จก่อน export พร้อม loading, ป้องกันกดซ้ำ, timeout 30 วินาที และข้อความ error
+ปุ่ม **ดาวน์โหลด CSV** ในส่วนประวัติส่งออก **My links ของผู้ใช้ที่ Login** ทุกหน้าตามคำค้นและ Tag ปัจจุบัน ไม่ใช่เฉพาะหน้าที่โหลดอยู่ ต้อง Login ปุ่มรอให้คำค้นโหลดเสร็จก่อน export พร้อม loading, ป้องกันกดซ้ำ, timeout 30 วินาที และข้อความ error
 
-`GET /api/links/export.csv?q=keyword` รับ `q` string ไม่เกิน 120 ตัวอักษร (trim) เงื่อนไขเดียวกับประวัติ: ค้น title, original URL หรือ code แบบ case-insensitive และค้น `%`, `_`, `\` เป็นอักขระจริง ไม่ใช่ wildcard Query อื่นหรือ q หลายค่าตอบ 400
+`GET /api/links/export.csv?q=keyword&tag=campaign` รับ `q` string ไม่เกิน 120 ตัวอักษร (trim) เงื่อนไขเดียวกับประวัติ: ค้น title, original URL หรือ code แบบ case-insensitive และค้น `%`, `_`, `\` เป็นอักขระจริง ไม่ใช่ wildcard รับ optional `tag` ชื่อเดียวตาม [Tags contract](docs/TAGS.md) ร่วมกับคำค้นแบบ AND; query อื่นหรือ q/tag หลายค่าตอบ 400
 
 - เรียง `created_at DESC, id DESC` คงที่ อ่านข้อมูลกับจำนวน event ใน PostgreSQL statement เดียว ส่งออกได้สูงสุด **10,000 รายการ** หากเกินตอบ **413 JSON** ให้ลดคำค้น ไม่ส่งไฟล์บางส่วน
 - มี 7 คอลัมน์: ชื่อลิงก์, URL ต้นฉบับ, Short URL, วันที่สร้าง (UTC), วันหมดอายุ (UTC), สถานะ (`Active`/`Disabled`/`Expired`) และจำนวนครั้งที่เปิด ไม่ส่ง id, secrets หรือข้อมูลฐานข้อมูลภายใน
@@ -191,8 +193,9 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 |---|---|---|
 | GET | `/api/health` | Database connectivity: 200/503 |
 | POST | `/api/links` | ต้อง Login + CSRF; สร้างลิงก์: 201, invalid: 400, alias ซ้ำ: 409, rate limit: 429 |
-| GET | `/api/links?page=1&limit=10&q=keyword` | My links ของเจ้าของที่ Login (limit 1–50); anonymous: 401 |
-| GET | `/api/links/export.csv?q=keyword` | ดาวน์โหลดMy links ของผู้ใช้ที่ Loginทุกหน้าตามคำค้น; 400 invalid, 413 เกิน 10,000 รายการ |
+| PATCH | `/api/links/:code` | เจ้าของ + CSRF; แก้ `title`, `originalUrl` และ/หรือ private `tags`; 200, invalid 400, auth 401/403, not owned/missing 404, rate limit 429; คง Short URL/QR/expiry/events ดู [Edit link](docs/LINK-EDITING.md) |
+| GET | `/api/links?page=1&limit=10&q=keyword&tag=campaign` | My links ของเจ้าของที่ Login (limit 1–50); anonymous: 401 |
+| GET | `/api/links/export.csv?q=keyword&tag=campaign` | ดาวน์โหลดMy links ของผู้ใช้ที่ Loginทุกหน้าตามคำค้นและ Tag; 400 invalid, 413 เกิน 10,000 รายการ |
 | GET | `/api/stats` | สถิติของเจ้าของที่ Login และ 7 วัน (UTC); anonymous: 401 |
 | GET | `/api/links/:code` | รายละเอียด/จำนวนคลิกเฉพาะเจ้าของ; ของผู้อื่น: 404, anonymous: 401 |
 | GET | `/api/links/:code/qr` | QR PNG; เพิ่ม `?download=1` เพื่อดาวน์โหลด |
@@ -306,7 +309,7 @@ Open **http://localhost:5173**, matching `AUTH_ORIGIN=http://localhost:5173`. lo
 
 After updating these scripts, press Ctrl+C in the old dev terminal and run `npm run dev` again. When running API/frontend separately, wait for the API listening message before opening the frontend. `npm run dev:web` includes the readiness wait, while `npm run dev -w frontend` starts only Vite.
 
-`npm test` runs 3 local HTTP readiness tests plus 45 backend tests (48 total), using isolated PostgreSQL for integration cases and injected provider responses for AI cases. Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes.
+`npm test` runs 3 local HTTP readiness tests plus 52 backend tests (55 total), using isolated PostgreSQL for integration cases and injected provider responses for AI cases. Readiness tests cover initially unavailable responses, a bounded timeout for an unrelated HTTP 200 service and hanging requests. No sleeps are added to business logic or auth writes.
 
 ### Profile photo
 
@@ -332,3 +335,14 @@ Login now uses Account → Password; registration uses Account (display name + e
 ## Morph loading indicators
 
 A shared `frontend/src/components/ui/morph-loading.tsx` adapts the supplied four-shape reference to the existing React/TypeScript + CSS architecture. Styles/keyframes live in styles.css and dimensions/timing in theme.css; no Tailwind/shadcn or animation dependency is needed. Small (20px) indicators inherit the button text color; medium (64px) indicators use lime on session/Preview/history loading. Existing request states, disabled controls, error/success responses and readable status text remain authoritative. Indicators are decorative (`aria-hidden`); text/status regions describe the operation. Reduced-motion shows four stationary shapes. No fake progress or minimum loading timer.
+
+## Private tags
+
+เพิ่ม Tags ใน Link options ตอนสร้าง หรือกด Edit ใน My links เช่น `โซเชียล, สมัครงาน, campaign` รองรับสูงสุด 8 Tags ต่อ link, 32 ตัวอักษรต่อ Tag; trim/NFC/lowercase และรวมค่าซ้ำ Tags เป็นข้อมูลส่วนตัว ไม่แสดงใน public Preview หรือ QR กรองทีละ Tag ร่วมกับคำค้นได้ และ CSV ส่งออกทุกหน้าตามตัวกรอง (คง 7 คอลัมน์เดิม)
+
+`GET /api/tags` ต้อง Login และคืนเฉพาะ Tags ที่ใช้ในลิงก์ของเจ้าของ อ่าน contract, validation และผลตรวจที่ [Tags documentation](docs/TAGS.md)
+
+รัน `npm run db:migrate` ก่อนเริ่ม backend ที่อัปเดต: migration `006_link_tags.sql` เพิ่ม `links.tags` เป็น `text[] NOT NULL DEFAULT '{}'` และ GIN index โดยคงข้อมูล/เจ้าของเดิม ยังมี 4 ตาราง รันซ้ำได้ ลิงก์เก่าเริ่มต้นไม่มี Tags
+## Render deployment
+
+Deploy one Free Node web service with the existing Supabase database using render.yaml. Read [step-by-step Render setup](docs/RENDER.md). Secrets stay in Render Environment; HTTPS origin is supplied automatically by Render through scripts/start-render.mjs. Online deployment has not yet been verified.

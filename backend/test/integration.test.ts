@@ -519,6 +519,9 @@ test('auth migration preserves old links/events and leaves legacy ownership uncl
     const statusSql = await readFile(new URL('../migrations/004_link_status.sql', import.meta.url), 'utf8');
     await client.query(statusSql); assert.equal((await client.query('SELECT is_active FROM links')).rows[0].is_active,true); await client.query('UPDATE links SET is_active=false'); await client.query(statusSql);
     assert.equal((await client.query('SELECT is_active FROM links')).rows[0].is_active,false);
+    const tagsSql = await readFile(new URL('../migrations/006_link_tags.sql', import.meta.url), 'utf8');
+    await client.query(tagsSql); await client.query(tagsSql);
+    assert.deepEqual((await client.query('SELECT tags FROM links')).rows[0].tags,[]);
     const row = (await client.query('SELECT code, original_url, owner_id, (SELECT COUNT(*)::int FROM click_events) AS events FROM links')).rows[0];
     assert.deepEqual(row, { code: 'old-link', original_url: 'https://example.com/old', owner_id: null, events: 1 });
   } finally { await client.query('ROLLBACK'); client.release(); }
@@ -750,6 +753,151 @@ test('login and register have bounded request rates', async () => {
     }
     assert.ok(limited);
   }
+});
+
+test('link edits preserve code, QR, ownership, expiry and events; Preview/history/CSV use the saved destination', async () => {
+  const made = (await signedRequest().post('/api/links').send({ originalUrl:'https://example.com/edit-before',title:'before edit',expiryPreset:'7d' }).expect(201)).body;
+  await request(app).get(`/${made.code}`).expect(302);
+  const qrBefore = (await request(app).get(`/api/links/${made.code}/qr`).expect(200)).body;
+  const destination = 'https://example.org/new-path?utm_source=edit&keep=a%2Fb#section';
+  const title = 'ชื่อใหม่, "รายงาน"';
+  const patch = (body: unknown) => request(app).patch(`/api/links/${made.code}`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(body);
+  const updated = (await patch({title,originalUrl:destination}).expect(200)).body;
+  for (const key of ['id','code','shortUrl','createdAt','expiresAt','isActive']) assert.deepEqual(updated[key],made[key]);
+  assert.equal(updated.clicks,1); assert.equal(updated.originalUrl,destination); assert.equal(updated.title,title);
+  assert.equal((await patch({title,originalUrl:destination}).expect(200)).body.clicks,1);
+  assert.deepEqual((await request(app).get(`/api/links/${made.code}/qr`).expect(200)).body,qrBefore);
+  const preview = (await request(app).get(`/api/links/${made.code}/preview`).expect(200)).body;
+  assert.equal(preview.destinationHost,'example.org'); assert.equal(preview.originalUrl,destination); assert.equal(preview.title,title);
+  const history = (await signedRequest().get('/api/links').query({q:title}).expect(200)).body;
+  assert.equal(history.items.find((item:{code:string})=>item.code===made.code).originalUrl,destination);
+  const csv = parseCsv((await signedRequest().get('/api/links/export.csv').query({q:title}).expect(200)).text);
+  assert.equal(csv[1][0],title); assert.equal(csv[1][1],destination); assert.equal(csv[1][6],'1');
+  await patch({title:''}).expect(200);
+  assert.equal((await signedRequest().get(`/api/links/${made.code}`).expect(200)).body.originalUrl,destination);
+  const redirect = await request(app).get(`/${made.code}`).expect(302); assert.equal(redirect.headers.location,destination);
+  await request(app).head(`/${made.code}`).expect(302);
+  assert.equal((await signedRequest().get(`/api/links/${made.code}`).expect(200)).body.clicks,2);
+  assert.equal((await pool.query('SELECT owner_id FROM links WHERE id=$1',[made.id])).rows[0].owner_id,fixtureUserId);
+});
+
+test('link edit requires session, ownership and CSRF, validates only editable fields, and protects legacy links', async t => {
+  // Advance beyond the 48-minute auth-limiter fixture window used above.
+  t.mock.timers.enable({apis:['Date'],now:Date.now()+64*60_000});
+  const b = await account('edit-other@example.test');
+  const made = (await signedRequest().post('/api/links').send({originalUrl:'https://example.com/edit-security',title:'unchanged'}).expect(201)).body;
+  const path = `/api/links/${made.code}`;
+  await request(app).patch(path).send({title:'attack'}).expect(401);
+  await b.agent.patch(path).set('X-CSRF-Token',b.token).send({title:'attack'}).expect(404);
+  await request(app).patch(path).set('Cookie',fixtureCookie).send({title:'attack'}).expect(403);
+  await request(app).patch(path).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).set('Origin','https://evil.example').send({title:'attack'}).expect(403);
+  const patch = (body: unknown) => request(app).patch(path).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(body);
+  for (const body of [{},{title:null},{title:'x'.repeat(121)},{owner_id:b.user.id},{code:'new-code'},{isActive:false},{expiresAt:null},
+    {originalUrl:'javascript:alert(1)'},{originalUrl:'https://user:pass@example.com'},{originalUrl:'not a URL'},
+    {originalUrl:made.shortUrl},{originalUrl:'https://example.com/'+'x'.repeat(2048)}]) await patch(body).expect(400);
+  await request(app).patch('/api/links/does-not-exist').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({title:'attack'}).expect(404);
+  await pool.query("INSERT INTO links(code,original_url) VALUES('edit-legacy','https://example.com/legacy')");
+  await request(app).patch('/api/links/edit-legacy').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({title:'claimed'}).expect(404);
+  const expiry = (await pool.query("SELECT (sess->>'authExpiresAt')::bigint AS expires FROM sessions WHERE sess->'passport'->>'user'=$1",[b.user.id])).rows[0].expires;
+  t.mock.method(clock,'now',()=>Number(expiry));
+  await request(app).patch(path).set('Cookie',b.cookie).set('X-CSRF-Token',b.token).send({title:'attack'}).expect(401);
+  assert.deepEqual((await pool.query('SELECT title,original_url,owner_id FROM links WHERE id=$1',[made.id])).rows[0],{title:'unchanged',original_url:made.originalUrl,owner_id:fixtureUserId});
+  assert.equal((await pool.query("SELECT owner_id,title FROM links WHERE code='edit-legacy'")).rows[0].owner_id,null);
+});
+
+test('editing disabled or expired links never enables, renews or counts them', async t => {
+  const expiresAt = new Date(clock.now()+60_000).toISOString();
+  const made = (await signedRequest().post('/api/links').send({originalUrl:'https://example.com/edit-expiry',expiresAt}).expect(201)).body;
+  await request(app).get(`/${made.code}`).expect(302);
+  await request(app).patch(`/api/links/${made.code}/status`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({isActive:false}).expect(200);
+  t.mock.method(clock,'now',()=>new Date(expiresAt).getTime());
+  const patch = (body: unknown) => request(app).patch(`/api/links/${made.code}`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(body);
+  const saved = (await patch({originalUrl:'https://example.org/edit-disabled?x=1#frag'}).expect(200)).body;
+  assert.equal(saved.status,'disabled'); assert.equal(saved.isActive,false); assert.equal(saved.expiresAt,expiresAt); assert.equal(saved.clicks,1);
+  await request(app).get(`/${made.code}`).expect(410);
+  assert.equal((await request(app).get(`/api/links/${made.code}/preview`).expect(200)).body.status,'disabled');
+  await request(app).patch(`/api/links/${made.code}/status`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({isActive:true}).expect(200);
+  const expired = (await patch({title:'still expired'}).expect(200)).body;
+  assert.equal(expired.status,'expired'); assert.equal(expired.expiresAt,expiresAt); assert.equal(expired.clicks,1);
+  await request(app).get(`/${made.code}`).expect(410); await request(app).head(`/${made.code}`).expect(410);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events WHERE link_id=$1',[made.id])).rows[0].n,1);
+});
+
+test('concurrent partial edits keep both fields, and redirects wait for a committed destination change', async () => {
+  const made = (await signedRequest().post('/api/links').send({originalUrl:'https://example.com/edit-race'}).expect(201)).body;
+  const patch = (body:unknown) => request(app).patch(`/api/links/${made.code}`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(body).expect(200);
+  await Promise.all([patch({title:'concurrent name'}),patch({originalUrl:'https://example.org/concurrent?keep=1#frag'})]);
+  const saved = (await signedRequest().get(`/api/links/${made.code}`).expect(200)).body;
+  assert.equal(saved.title,'concurrent name'); assert.equal(saved.originalUrl,'https://example.org/concurrent?keep=1#frag');
+  const client = await pool.connect(); let redirect: Promise<request.Response> | undefined;
+  try {
+    await client.query('BEGIN'); await client.query('UPDATE links SET original_url=$1 WHERE id=$2',['https://example.net/latest?x=a%2Fb#updated',made.id]);
+    redirect=request(app).get(`/${made.code}`).then(value=>value);
+    let blocked=false;
+    for(let i=0;i<100;i++) {
+      const rows=await pool.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id, original_url, expires_at, is_active FROM links%'");
+      if(rows.rowCount) {blocked=true;break;} await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.ok(blocked,'redirect must wait for the destination write');
+    await client.query('COMMIT'); const result=await redirect; assert.equal(result.status,302); assert.equal(result.headers.location,'https://example.net/latest?x=a%2Fb#updated');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events WHERE link_id=$1',[made.id])).rows[0].n,1);
+  } finally {await client.query('ROLLBACK');client.release();if(redirect) await redirect;}
+});
+
+test('tags normalize, deduplicate and stay private; owner-only edits preserve public link behavior', async () => {
+  const made = (await signedRequest().post('/api/links').send({originalUrl:'https://example.com/tags-private',tags:[' สมัครงาน ','Social','social']}).expect(201)).body;
+  assert.deepEqual(made.tags,['social','สมัครงาน'].sort());
+  const qrBefore=(await request(app).get(`/api/links/${made.code}/qr`).expect(200)).body;
+  assert.equal((await request(app).get(`/api/links/${made.code}/preview`).expect(200)).body.tags,undefined);
+  await request(app).get('/api/tags').expect(401);
+  const dictionary=(await signedRequest().get('/api/tags').expect(200)).body.tags;
+  assert.ok(dictionary.includes('สมัครงาน')); assert.ok(dictionary.includes('social'));
+  const patch=(body:unknown)=>request(app).patch(`/api/links/${made.code}`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send(body);
+  const updated=(await patch({tags:['แคมเปญ']}).expect(200)).body;
+  assert.deepEqual(updated.tags,['แคมเปญ']); assert.equal(updated.shortUrl,made.shortUrl); assert.equal(updated.originalUrl,made.originalUrl); assert.equal(updated.clicks,0);
+  assert.deepEqual((await request(app).get(`/api/links/${made.code}/qr`).expect(200)).body,qrBefore);
+  assert.equal((await signedRequest().get(`/api/links/${made.code}`).expect(200)).body.clicks,0);
+  assert.deepEqual((await patch({tags:[]}).expect(200)).body.tags,[]);
+});
+
+test('tag filters intersect search across pages and CSV without exposing another owner or recording events', async () => {
+  const other=await pool.query("INSERT INTO users(email,password_hash) VALUES('tag-other@example.test','unused') RETURNING id");
+  await pool.query("INSERT INTO links(code,original_url,title,owner_id,tags) SELECT 'tag-page-'||n,'https://example.com','tag search match',$1,ARRAY['รายงาน'] FROM generate_series(1,8) n",[fixtureUserId]);
+  await pool.query("INSERT INTO links(code,original_url,title,owner_id,tags) VALUES('tag-foreign','https://example.com','tag search match',$1,ARRAY['รายงาน','foreign-only'])",[other.rows[0].id]);
+  await pool.query("INSERT INTO links(code,original_url,title,tags) VALUES('tag-ownerless','https://example.com','tag search match',ARRAY['รายงาน','legacy-only'])");
+  const first=(await signedRequest().get('/api/links').query({q:'tag search',tag:' รายงาน ',limit:6}).expect(200)).body;
+  const second=(await signedRequest().get('/api/links').query({q:'tag search',tag:'รายงาน',limit:6,page:2}).expect(200)).body;
+  assert.equal(first.total,8); assert.equal(first.items.length,6); assert.equal(second.items.length,2);
+  const csv=parseCsv((await signedRequest().get('/api/links/export.csv').query({q:'tag search',tag:'รายงาน'}).expect(200)).text);
+  assert.equal(csv.length,9); assert.equal(csv[0].length,7); assert.deepEqual(csv.slice(1).map(row=>row[2]),[...first.items,...second.items].map(link=>link.shortUrl));
+  assert.equal(parseCsv((await signedRequest().get('/api/links/export.csv').query({tag:'not-present'}).expect(200)).text).length,1);
+  assert.equal((await signedRequest().get('/api/links').query({tag:"' OR 1=1 --"}).expect(200)).body.total,0);
+  const dictionary=(await signedRequest().get('/api/tags').expect(200)).body.tags;
+  assert.ok(!dictionary.includes('foreign-only')); assert.ok(!dictionary.includes('legacy-only'));
+  const before=(await pool.query('SELECT COUNT(*)::int AS n FROM click_events')).rows[0].n;
+  await signedRequest().get('/api/links').query({tag:'รายงาน'}).expect(200);
+  await signedRequest().get('/api/links/export.csv').query({tag:'รายงาน'}).expect(200);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM click_events')).rows[0].n,before);
+  await request(app).patch('/api/links/tag-foreign').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({tags:['claimed']}).expect(404);
+  await request(app).patch('/api/links/tag-ownerless').set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({tags:['claimed']}).expect(404);
+  assert.deepEqual((await pool.query("SELECT tags FROM links WHERE code='tag-foreign'")).rows[0].tags,['รายงาน','foreign-only']);
+});
+
+test('tag input and query validation reject malformed lists and additive migration preserves existing rows', async () => {
+  const {tagsSchema}=await import('../src/tags.js');
+  for(const tags of [null,'tag',[null],[''],['x'.repeat(33)],['a,b'],['a\u0000b'],Array.from({length:9},(_,i)=>'tag'+i)]) assert.equal(tagsSchema.safeParse(tags).success,false);
+  assert.deepEqual(tagsSchema.parse(['Cafe\u0301','Café']),['café']);
+  const made=(await signedRequest().post('/api/links').send({originalUrl:'https://example.com/tag-invalid'}).expect(201)).body;
+  for(const tags of [null,'tag',[''],['x'.repeat(33)],['a,b'],['a\u0000b']]) await request(app).patch(`/api/links/${made.code}`).set('Cookie',fixtureCookie).set('X-CSRF-Token',fixtureCsrf).send({tags}).expect(400);
+  for(const tag of ['', 'x'.repeat(33),'a,b']) {
+    await signedRequest().get('/api/links').query({tag}).expect(400);
+    await signedRequest().get('/api/links/export.csv').query({tag}).expect(400);
+  }
+  await signedRequest().get('/api/links?tag=a&tag=b').expect(400);
+  const before=(await pool.query('SELECT code,original_url,owner_id,expires_at,is_active,tags FROM links WHERE id=$1',[made.id])).rows[0];
+  await migrate(); await migrate();
+  assert.deepEqual((await pool.query('SELECT code,original_url,owner_id,expires_at,is_active,tags FROM links WHERE id=$1',[made.id])).rows[0],before);
+  assert.deepEqual(before.tags,[]);
 });
 
 test('assistant rejects role/model/owner injection, oversized and malformed conversations', () => {
