@@ -6,7 +6,7 @@ React's production build and Express run on one Render Web Service, with the exi
 
 Rotate the database password and OpenAI key previously disclosed in chat, and use a fresh SESSION_SECRET. Enter secrets privately in provider dashboards, never in Git or chat. Update the local backend environment yourself if the database password changes. Render Blueprint generates its own SESSION_SECRET. AI is optional; leave OPENAI_API_KEY unset to deploy the core app without API charges.
 
-The working tree currently contains application features not committed to main. Review and push those changes together with the deployment files before connecting Render; deploying the old GitHub commit will omit Tags and recent UI fixes. Keep .env, tmp/, node_modules/, dist/ and local guidance out of Git. The tracked Supabase CA certificate is public, not a private key.
+Review and push application changes together with the deployment files before connecting Render. Keep .env, tmp/, node_modules/, dist/ and local guidance out of Git. The tracked Supabase CA certificate is public, not a private key.
 
 ## Recommended: Blueprint
 
@@ -54,8 +54,15 @@ Old PNGs/printed QR codes containing localhost cannot be rewritten: download fre
 
 Free web services spin down after 15 minutes without requests; the next request has a cold start. Do not run test resets against Supabase. Database connection failure: verify the exact Session pooler host/password, port 5432, verified CA path and network restrictions. Startup migration failure: confirm table-owner database permissions; do not bypass TLS validation. Login 403: inspect the actual HTTPS origin and cookie/proxy settings. Build failure: confirm latest files/lockfile and dev dependencies installed for TypeScript/Vite.
 
-Prepared locally; no Render deployment or hosted database migration is claimed until dashboard and online checks succeed.
+## Hosted verification (2026-10-04)
+
+[Live application](https://synerry-link-studio.onrender.com), Render Free Node service, commit `2776383c5f07e2ca5a34bae735354bcf174e3a86`. Render reported **Deploy succeeded / Live**. Build completed on Node 22.23.3; startup log confirmed database migration complete before listening on port 10000.
+
+- HTTPS `/api/health`: 200, `status: ok`, `database: connected`.
+- HTTPS `/api/auth/session`: 200; session cookie has Secure, HttpOnly and the `__Host-` prefix. This confirms bootstrap flags, not successful account login or session persistence.
+- Public Login UI loaded in the browser; no warning/error console entries were observed.
+- Not yet verified online: account login/logout, creation/editing, ownership A/B, Preview/redirect counts, expiry/disabled behavior, CSV, profile, AI, persistence after redeploy, or physical mobile QR scanning. No production test reset was run.
 
 Official references: [Express deployment](https://render.com/docs/deploy-node-express-app), [Blueprint specification](https://render.com/docs/blueprint-spec), [default environment variables](https://render.com/docs/environment-variables), [Free limitations](https://render.com/docs/free), [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
-Local preparation evidence (2026-10-04): typecheck and start-script syntax checks passed; the existing production build is current. Render startup script was exercised with production configuration and RENDER_EXTERNAL_URL against separate local shorturl_test on port 3119: additive migrations completed, database health returned 200, auth bootstrap returned 200 with Secure/HttpOnly/__Host cookie behind a simulated trusted HTTPS proxy. The temporary process was stopped. Pattern checks on 77 Git-included candidate files found no OpenAI key or private-key pattern; this is a limited scan, not proof of all possible secrets. Blueprint validation on Render, live HTTPS, hosted migrations and online end-to-end checks are pending account login/publishing.
+Local preparation evidence (2026-10-04): typecheck and start-script syntax checks passed; the existing production build is current. Render startup script was exercised with production configuration and RENDER_EXTERNAL_URL against separate local shorturl_test on port 3119: additive migrations completed, database health returned 200, auth bootstrap returned 200 with Secure/HttpOnly/__Host cookie behind a simulated trusted HTTPS proxy. The temporary process was stopped. Pattern checks on 77 Git-included candidate files found no OpenAI key or private-key pattern; this is a limited scan, not proof of all possible secrets. Hosted verification is recorded separately above.

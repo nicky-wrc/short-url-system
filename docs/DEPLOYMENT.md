@@ -1,6 +1,6 @@
 # Deploy checklist
 
-Login/My links requires migration 002_auth.sql before starting the new server. It preserves legacy links/events, adds nullable ownership/users/sessions and enables RLS. Use the schema/table-owner database role for the server; public Data API roles have no policies. Back up the database and review permissions before applying to a hosted database. Hosted Supabase migration is pending explicit approval in this task; only local QA was migrated.
+Login/My links requires migration 002_auth.sql before starting the new server. It preserves legacy links/events, adds nullable ownership/users/sessions and enables RLS. Use the schema/table-owner database role for the server; public Data API roles have no policies. Back up the database and review permissions before applying to a hosted database. Render startup completed hosted Supabase migrations on 2026-10-04; authenticated online acceptance checks remain pending.
 
 Production Secure cookies require HTTPS and correctly configured TRUST_PROXY_HOPS. Local HTTP/Compose use development. Run npm run demo:users only against the intended approved database and privately hand off credentials saved under ignored tmp/.
 
@@ -64,4 +64,4 @@ Build Dockerfile ที่ root ตั้ง env ชุดเดียวกั�
 
 ## Render Free + Supabase
 
-See [Render deployment guide](RENDER.md) and root render.yaml. Start uses scripts/start-render.mjs to derive the HTTPS origin and migrate before listening; no paid pre-deploy hook. Hosted deployment is pending dashboard setup and online verification.
+See [Render deployment guide and verification record](RENDER.md) and root render.yaml. Start uses scripts/start-render.mjs to derive the HTTPS origin and migrate before listening; no paid pre-deploy hook. [Live application](https://synerry-link-studio.onrender.com) was verified on 2026-10-04 for build/startup, migration, database health, cookie flags and Login UI. Authenticated flows and physical QR scanning remain pending.

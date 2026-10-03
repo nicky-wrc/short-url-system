@@ -15,7 +15,7 @@ UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพ�
 | History + opens | PostgreSQL `links`/`click_events`, ค้นหา/แบ่งหน้า, concurrent GET test |
 | DFD / ER / Architecture | `docs/DIAGRAMS.md` |
 | Installation / env | README + `.env.example` ทั้ง root/backend/frontend |
-| Deploy preparation | Dockerfile, Compose, deployment checklist; ยังไม่มี public deployment |
+| Deployment | Render Free + Supabase: https://synerry-link-studio.onrender.com; build, migration, health และหน้า Login ตรวจแล้ว ส่วน flow หลัง Login ยังต้องตรวจออนไลน์ |
 | Presentation | `docs/PRESENTATION.md` |
 
 GitHub Actions workflow จะรัน typecheck/build/integration tests ด้วย PostgreSQL แยกหลัง push; ยังไม่อ้างว่ารันบน GitHub ผ่านจนกว่าจะมีผล CI จริง
@@ -115,7 +115,7 @@ docker compose up --build -d
 - `DATABASE_SSL=true` เมื่อ provider ต้องใช้ TLS (ยังตรวจ certificate ไม่ปิด verification)
 - ตั้ง secrets ใน dashboard ของ host ห้ามใส่ใน Git
 
-ระบบพร้อมสำหรับ Deploy แต่ repository นี้ไม่ได้ระบุว่าได้เผยแพร่ URL ออนไลน์แล้ว ต้อง provision host/database และทดสอบตาม checklist ก่อนส่งงาน
+เผยแพร่บน https://synerry-link-studio.onrender.com แล้วเมื่อ 2026-10-04 ตรวจ build, migration, database health และหน้า Login บน HTTPS แล้ว ยังต้องทดสอบ flow หลัง Login และสแกน QR ด้วยมือถือจริงตาม checklist ก่อนส่งงาน
 
 ## ทดสอบ
 
@@ -345,4 +345,4 @@ A shared `frontend/src/components/ui/morph-loading.tsx` adapts the supplied four
 รัน `npm run db:migrate` ก่อนเริ่ม backend ที่อัปเดต: migration `006_link_tags.sql` เพิ่ม `links.tags` เป็น `text[] NOT NULL DEFAULT '{}'` และ GIN index โดยคงข้อมูล/เจ้าของเดิม ยังมี 4 ตาราง รันซ้ำได้ ลิงก์เก่าเริ่มต้นไม่มี Tags
 ## Render deployment
 
-Deploy one Free Node web service with the existing Supabase database using render.yaml. Read [step-by-step Render setup](docs/RENDER.md). Secrets stay in Render Environment; HTTPS origin is supplied automatically by Render through scripts/start-render.mjs. Online deployment has not yet been verified.
+Deploy one Free Node web service with the existing Supabase database using render.yaml. Read [step-by-step Render setup](docs/RENDER.md). Secrets stay in Render Environment; HTTPS origin is supplied automatically by Render through scripts/start-render.mjs. [Live application](https://synerry-link-studio.onrender.com) was verified on 2026-10-04 for build/startup, hosted migration, database health, production cookie flags and Login UI. Authenticated end-to-end flows and physical QR scanning remain unverified online.
