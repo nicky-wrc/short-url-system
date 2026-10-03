@@ -31,3 +31,45 @@ erDiagram
     json sess "NOT NULL; user ID / CSRF / authExpiresAt / cookie"
     timestamp6 expire "NOT NULL; WITHOUT TIME ZONE"
   }
+  USERS ||..o{ CHAT_CONVERSATIONS : owns
+  CHAT_CONVERSATIONS ||..o{ CHAT_MESSAGES : contains
+  LINKS ||..o{ QR_CODES : caches
+  USERS ||..o{ CSV_EXPORTS : exports
+  LINKS ||..o{ PREVIEW_EVENTS : viewed
+  CHAT_CONVERSATIONS {
+    bigint id PK
+    bigint owner_id FK "NOT NULL; CASCADE"
+    varchar80 title "NOT NULL"
+    boolean include_stats "NOT NULL; default false"
+    timestamptz created_at "NOT NULL; NOW()"
+    timestamptz updated_at "NOT NULL; NOW()"
+  }
+  CHAT_MESSAGES {
+    bigint id PK
+    bigint conversation_id FK "NOT NULL; CASCADE"
+    varchar9 role "user or assistant"
+    text content "1-12000 characters"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  QR_CODES {
+    bigint id PK
+    bigint link_id FK "NOT NULL; CASCADE"
+    text payload "UNIQUE with link_id"
+    bytea png "NOT NULL"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  CSV_EXPORTS {
+    bigint id PK
+    bigint owner_id FK "NOT NULL; CASCADE"
+    varchar120 search "NOT NULL; default empty"
+    varchar32 tag "nullable"
+    integer row_count "0-10000"
+    varchar64 filename "NOT NULL"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  PREVIEW_EVENTS {
+    bigint id PK
+    bigint link_id FK "NOT NULL; CASCADE"
+    varchar8 status "active disabled expired"
+    timestamptz viewed_at "NOT NULL; NOW()"
+  }

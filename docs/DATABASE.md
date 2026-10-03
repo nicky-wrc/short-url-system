@@ -1,8 +1,8 @@
 # PostgreSQL schema / Data Dictionary
 
-Source of truth: `backend/migrations/001_initial.sql` ถึง `006_link_tags.sql` และ SQL ใน `backend/src/{app,auth,assistant}.ts` ตรวจเมื่อ 2026-10-04 ดู [ER Diagram](DIAGRAMS.md#er-diagram)
+Source of truth: `backend/migrations/001_initial.sql` ถึง `007_activity_history.sql` และ SQL ใน `backend/src/{app,auth,assistant}.ts` ตรวจเมื่อ 2026-10-04 ดู [ER Diagram](DIAGRAMS.md#er-diagram)
 
-มี **4 ตาราง application** ใน public schema: users, sessions, links, click_events ไม่มี tags, QR, statistics หรือ chat table และไม่มี migration-history table; migrator อ่านไฟล์ 001–006 ทุกครั้งใน transaction เดียว ใช้ advisory transaction lock 735119 และ additive/idempotent DDL
+มี **9 ตาราง application** ใน public schema: users, sessions, links, click_events, chat_conversations, chat_messages, qr_codes, csv_exports, preview_events; Tags อยู่ใน links และสถิติคลิกคำนวณจาก click_events และไม่มี migration-history table; migrator อ่านไฟล์ 001–007 ทุกครั้งใน transaction เดียว ใช้ advisory transaction lock 735119 และ additive/idempotent DDL
 
 ## users — สมาชิกและ Profile
 
@@ -85,4 +85,46 @@ Migration 002 เปิด RLS ทั้ง 4 ตารางโดยไม่�
 | 005_avatar | avatar_image / avatar_version / paired-size CHECK |
 | 006_link_tags | tags default empty / GIN index |
 
-ไม่มีการลบข้อมูล startup migration รันครบแล้วบน Render ตาม deployment log; การตรวจนี้อ่านไฟล์ migrations/SQL ไม่ได้ query information_schema ของ Supabase เพื่อยืนยัน columns จริงทุกตัว ใช้ guarded local test DB เท่านั้นหากต้องการทดสอบ schema/reset
+ไม่มีการลบข้อมูล migrations 001–006 เคยรันบน Render แล้ว; migration 007 รอบนี้ตรวจ local เท่านั้น ต้อง push/deploy ก่อนฐานข้อมูลออนไลน์จะเพิ่มตาราง; การตรวจนี้อ่านไฟล์ migrations/SQL ไม่ได้ query information_schema ของ Supabase เพื่อยืนยัน columns จริงทุกตัว ใช้ guarded local test DB เท่านั้นหากต้องการทดสอบ schema/reset
+
+## ตารางใหม่ใน 007_activity_history.sql
+
+ทุก id ด้านล่างเป็น BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY; ทุก created_at/updated_at/viewed_at เป็น TIMESTAMPTZ NOT NULL DEFAULT NOW(). คอลัมน์ที่ไม่ระบุ nullable เป็น NOT NULL.
+
+| Table | Column | Type / constraint | หน้าที่ |
+|---|---|---|---|
+| chat_conversations | id | bigint PK identity | บทสนทนา |
+| chat_conversations | owner_id | bigint FK users.id ON DELETE CASCADE | เจ้าของที่ backend ตรวจ |
+| chat_conversations | title | varchar(80) | 80 code points แรกของคำถามแรก |
+| chat_conversations | include_stats | boolean default false | consent ของบทสนทนา; เปลี่ยนต้องเริ่มใหม่ |
+| chat_conversations | created_at | timestamptz default NOW() | สร้าง |
+| chat_conversations | updated_at | timestamptz default NOW() | อัปเดตเมื่อบันทึกคู่สำเร็จ |
+| chat_messages | id | bigint PK identity | ลำดับข้อความ |
+| chat_messages | conversation_id | bigint FK chat_conversations.id CASCADE | บทสนทนา |
+| chat_messages | role | varchar(9) CHECK user/assistant | ผู้ส่ง |
+| chat_messages | content | text CHECK length 1..12000 | plain text |
+| chat_messages | created_at | timestamptz default NOW() | บันทึก |
+| qr_codes | id | bigint PK identity | Cache record |
+| qr_codes | link_id | bigint FK links.id CASCADE | ลิงก์ |
+| qr_codes | payload | text; UNIQUE(link_id,payload) | Short URL รวม base origin |
+| qr_codes | png | bytea | PNG512x512, margin4, ECC M |
+| qr_codes | created_at | timestamptz default NOW() | สร้าง cache |
+| csv_exports | id | bigint PK identity | Export record |
+| csv_exports | owner_id | bigint FK users.id CASCADE | ผู้ส่งออก |
+| csv_exports | search | varchar(120) default '' | validated query |
+| csv_exports | tag | varchar(32) nullable | validated tag |
+| csv_exports | row_count | integer CHECK 0..10000 | จำนวนรายการ response |
+| csv_exports | filename | varchar(64) | server-generated filename |
+| csv_exports | created_at | timestamptz default NOW() | เตรียมไฟล์ |
+| preview_events | id | bigint PK identity | Metadata GET record |
+| preview_events | link_id | bigint FK links.id CASCADE | ลิงก์ |
+| preview_events | status | varchar(8) CHECK active/disabled/expired | สถานะขณะ metadata GET |
+| preview_events | viewed_at | timestamptz default NOW() | เวลาบันทึกจาก DB |
+
+Indexes: chat_owner_updated_idx(owner_id,updated_at DESC,id DESC), chat_messages_order_idx(conversation_id,id), csv_owner_created_idx(owner_id,created_at DESC), preview_link_viewed_idx(link_id,viewed_at DESC); qr_codes unique(link_id,payload) สร้าง index เอง. PK ทุกตารางมี index.
+
+Relationships: users 1→0..N chat_conversations และ csv_exports; conversation 1→0..N messages; links 1→0..N qr_codes และ preview_events. FK ลูกทุกตัว NOT NULL และ CASCADE. ไม่มี FK session เพิ่มและไม่เปลี่ยน owner_id ของ links.
+
+Migration007 เปิด RLS/revoke PUBLIC บน5ตารางใหม่โดยไม่มี client policy. Express เชื่อมด้วย table-owner role และตรวจ ownership; ไม่เปิด Data API ให้ browser. ไม่บันทึก secrets/config, IP หรือ UA ใน tables เหล่านี้ แต่ข้อความแชต/คำค้นอาจมีข้อมูลส่วนตัวที่ผู้ใช้กรอก.
+
+ไม่มี backfill: ตารางใหม่เริ่มว่าง ไม่สามารถสร้างประวัติ QR/CSV/Preview/chat ย้อนหลังที่ไม่เคยเก็บ. Chat ลบเองได้; QR cache, CSV audit และ Preview events ยังไม่มี automatic retention job/admin UI. ผู้ดูแลต้องกำหนดนโยบาย retention ก่อนใช้ในปริมาณมาก; ขณะนี้ไม่ล้างข้อมูลอัตโนมัติ. Preview events ไม่ใช้แทน click_events และไม่รายงานเป็น unique visitors.

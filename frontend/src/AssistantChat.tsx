@@ -22,6 +22,10 @@ export function AssistantChat() {
   const [checking, setChecking] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationId, setConversationId] = useState<string | undefined>();
+  const [savedChats, setSavedChats] = useState<{id:string;title:string}[]>([]);
+  const [historyBusy,setHistoryBusy] = useState(false);
+  const [historyError,setHistoryError] = useState('');
   const [draft, setDraft] = useState('');
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,6 +42,27 @@ export function AssistantChat() {
   const sequence = useRef(0);
   const statusRequest = useRef<AbortController | null>(null);
 
+  async function loadChats() {
+    try { const result=await api<{conversations:{id:string;title:string}[]}>('/assistant/conversations'); setSavedChats(result.conversations);setHistoryError(''); }
+    catch(reason) { setHistoryError((reason as Error).message); }
+  }
+  async function selectChat(id:string) {
+    if (busy || historyBusy) return;
+    setHistoryBusy(true);setHistoryError('');
+    try {
+      if (!id) {setMessages([]);setConversationId(undefined);setIncludeStats(false);}
+      else {const result=await api<{messages:Message[];includeStats:boolean}>(`/assistant/conversations/${id}`);setMessages(result.messages);setConversationId(id);setIncludeStats(result.includeStats);}
+      setDraft('');setError('');
+    } catch(reason) {setHistoryError((reason as Error).message);}
+    finally {setHistoryBusy(false);}
+  }
+  async function deleteChat() {
+    if (!conversationId || busy || historyBusy || !window.confirm('ลบบทสนทนานี้และข้อความทั้งหมด?')) return;
+    setHistoryBusy(true);setHistoryError('');
+    try {await api(`/assistant/conversations/${conversationId}`,{method:'DELETE'});setConversationId(undefined);setMessages([]);await loadChats();}
+    catch(reason) {setHistoryError((reason as Error).message);}
+    finally {setHistoryBusy(false);}
+  }
   async function checkStatus() {
     statusRequest.current?.abort();
     const controller = new AbortController(); statusRequest.current = controller;
@@ -55,7 +80,7 @@ export function AssistantChat() {
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => () => { sequence.current++; request.current?.abort(); statusRequest.current?.abort(); }, []);
-  useEffect(() => { if (open) void checkStatus(); else statusRequest.current?.abort(); }, [open]);
+  useEffect(() => { if (open) { void checkStatus(); void loadChats(); } else statusRequest.current?.abort(); }, [open]);
   useEffect(() => {
     if (!open) return;
     const oldOverflow = document.body.style.overflow;
@@ -67,7 +92,7 @@ export function AssistantChat() {
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); return; }
       if (event.key !== 'Tab') return;
-      const elements = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],textarea:not(:disabled),input:not(:disabled)') ?? [])].filter(element => element.getClientRects().length);
+      const elements = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],textarea:not(:disabled),input:not(:disabled),select:not(:disabled)') ?? [])].filter(element => element.getClientRects().length);
       if (!elements?.length) return;
       const first = elements[0], last = elements[elements.length - 1];
       if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
@@ -80,19 +105,18 @@ export function AssistantChat() {
   useEffect(() => { conversation.current?.scrollTo({top:conversation.current.scrollHeight,behavior:'instant'}); }, [messages, question, error]);
 
   async function send() {
-    const content = draft.trim(); if (lock.current || !content || content.length > 1000 || !status?.available) return;
+    const content = draft.trim(); if (lock.current || !content || content.length > 1000 || !status?.available || historyBusy) return;
     lock.current = true; setBusy(true); setError(''); setQuestion(content); setDraft('');
-    // Only successful recent pairs go into the next request; never replay a failed user turn.
-    let history: Message[] = [...messages.slice(-6).map(message => ({...message,content:message.content.slice(0,1000)})), {role:'user',content}];
-    while (history.reduce((sum, message) => sum + message.content.length, 0) > 4000 && history.length > 1) history = history.slice(2);
+    const history: Message[] = [{role:'user',content}]; // Server loads owned history.
     const controller = new AbortController(); request.current = controller;
     const current = ++sequence.current;
     const timer = setTimeout(() => controller.abort(), 35_000);
     try {
-      const result = await api<{reply:string}>('/assistant/chat', {method:'POST', body:JSON.stringify({messages:history,includeStats}), signal:controller.signal});
+      const result = await api<{reply:string;conversationId:string}>('/assistant/chat', {method:'POST', body:JSON.stringify({messages:history,includeStats,conversationId}), signal:controller.signal});
       if (current !== sequence.current) return;
       if (typeof result.reply !== 'string' || !result.reply.trim()) throw new Error('AI ไม่ได้ส่งคำตอบ กรุณาลองใหม่');
-      setMessages(previous => [...previous, {role:'user' as const,content}, {role:'assistant' as const,content:result.reply}].slice(-20));
+      setMessages(previous => [...previous, {role:'user' as const,content}, {role:'assistant' as const,content:result.reply}]);
+      setConversationId(result.conversationId); void loadChats();
       setQuestion('');
     } catch (reason) {
       if (current !== sequence.current) return;
@@ -110,13 +134,16 @@ export function AssistantChat() {
     {open && <div className="ai-backdrop" onClick={event => {if(event.target === event.currentTarget) close();}}>
       <div ref={panel} className="ai-panel" data-empty={!messages.length && !question} role="dialog" aria-modal="true" aria-labelledby="ai-title" tabIndex={-1}>
         <header className="ai-header"><div><Sparkles className="ai-mark" size={19} /><h2 id="ai-title">Link Studio AI</h2></div><div className="ai-header-actions">
-          <button type="button" className="icon-button" title="เริ่มแชตใหม่" aria-label="เริ่มแชตใหม่" disabled={busy || (!messages.length && !draft && !error)} onClick={() => {setMessages([]);setDraft('');setError('');setCopied(null);setIncludeStats(false);input.current?.focus();}}><RotateCcw size={17} /></button>
+          <button type="button" className="icon-button" title="เริ่มแชตใหม่" aria-label="เริ่มแชตใหม่" disabled={busy || historyBusy || (!messages.length && !draft && !error)} onClick={() => {setConversationId(undefined);setMessages([]);setDraft('');setError('');setCopied(null);setIncludeStats(false);input.current?.focus();}}><RotateCcw size={17} /></button>
           <button type="button" className="icon-button" title="เกี่ยวกับผู้ช่วย" aria-label="เกี่ยวกับผู้ช่วย" aria-expanded={infoOpen} aria-controls="ai-info" onClick={() => setInfoOpen(previous => !previous)}><Info size={18} /></button>
           <button type="button" className="icon-button" aria-label="ปิดแชต" onClick={close}><X size={20} /></button>
         </div></header>
+        <div className="ai-history"><select aria-label="ประวัติแชตของคุณ (100 บทสนทนาล่าสุด)" value={conversationId ?? ''} disabled={busy || historyBusy} onChange={event=>void selectChat(event.target.value)}><option value="">แชตใหม่</option>{savedChats.map(chat=><option key={chat.id} value={chat.id}>{chat.title}</option>)}</select>{conversationId && <button type="button" className="text-button" disabled={busy || historyBusy} onClick={()=>void deleteChat()}>ลบแชต</button>}</div>
+        {historyBusy && <p role="status">กำลังโหลดประวัติ…</p>}
+        {historyError && <p className="ai-history-error" role="alert">{historyError}<button type="button" onClick={()=>void loadChats()}>ลองอีกครั้ง</button></p>}
         {infoOpen && <section id="ai-info" className="ai-info" aria-label="เกี่ยวกับผู้ช่วย">
           <p>ถามวิธีใช้ QR, Preview, วันหมดอายุ, CSV และการนับคลิก หรือให้ช่วยคิดชื่อลิงก์และข้อความแคมเปญ</p>
-          <p>ข้อความส่งไป OpenAI · อย่าส่งข้อมูลลับ ผู้ช่วยไม่สร้างหรือแก้ข้อมูลแทนคุณ และอาจตอบผิด</p>
+          <p>ประวัติแชตบันทึกในบัญชีของคุณและลบได้ · ข้อความล่าสุดส่งไป OpenAI · อย่าส่งข้อมูลลับ ผู้ช่วยไม่สร้างหรือแก้ข้อมูลแทนคุณ และอาจตอบผิด</p>
           <p>ส่งสถิติ: ส่งเฉพาะยอดรวมลิงก์และจำนวนเปิดของคุณ การเปลี่ยนตัวเลือกจะเริ่มแชตใหม่</p>
           <nav className="ai-shortcuts" aria-label="ปุ่มลัด workspace">{shortcuts.map(({hash,text,icon:Icon}) => <a key={hash} href={`#${hash}`} onClick={close}><Icon size={16} />{text}</a>)}</nav>
         </section>}
@@ -130,9 +157,9 @@ export function AssistantChat() {
           {checking && <p role="status" className="ai-service-status"><MorphLoading size="sm" />กำลังตรวจบริการ AI…</p>}
           {!checking && (statusError || !status?.available) && <div className="ai-service-status" role="status"><p>{statusError || 'ยังไม่เปิดบริการ AI'}</p><button className="text-button" type="button" onClick={() => void checkStatus()}>ตรวจอีกครั้ง</button></div>}
           {error && <p className="ai-error" role="alert">{error}</p>}
-          <PromptInput ref={input} value={draft} onChange={setDraft} onSubmit={() => void send()} onStop={() => stop()} busy={busy} disabled={checking || !status?.available} />
-          {!messages.length && !question && <div className="ai-suggestions" aria-label="คำถามแนะนำ">{suggestions.map(({label,question:prompt}) => <button key={label} type="button" title={prompt} aria-label={prompt} disabled={busy} onClick={() => {setDraft(prompt);setError('');input.current?.focus();}}>{label}</button>)}</div>}
-          <div className="ai-footer"><label className="ai-consent" title="ส่งเฉพาะยอดรวมให้ OpenAI; เปลี่ยนตัวเลือกจะเริ่มแชตใหม่"><input type="checkbox" checked={includeStats} disabled={busy} aria-describedby="ai-consent-hint" onChange={event => {setIncludeStats(event.target.checked);setMessages([]);setError('');setCopied(null);}} />ส่งสถิติให้ OpenAI</label><span>AI อาจตอบผิด</span></div>
+          <PromptInput ref={input} value={draft} onChange={setDraft} onSubmit={() => void send()} onStop={() => stop()} busy={busy} disabled={checking || historyBusy || !status?.available} />
+          {!messages.length && !question && <div className="ai-suggestions" aria-label="คำถามแนะนำ">{suggestions.map(({label,question:prompt}) => <button key={label} type="button" title={prompt} aria-label={prompt} disabled={busy || historyBusy} onClick={() => {setDraft(prompt);setError('');input.current?.focus();}}>{label}</button>)}</div>}
+          <div className="ai-footer"><label className="ai-consent" title="ส่งเฉพาะยอดรวมให้ OpenAI; เปลี่ยนตัวเลือกจะเริ่มแชตใหม่"><input type="checkbox" checked={includeStats} disabled={busy || historyBusy} aria-describedby="ai-consent-hint" onChange={event => {setIncludeStats(event.target.checked);setConversationId(undefined);setMessages([]);setError('');setCopied(null);}} />ส่งสถิติให้ OpenAI</label><span>AI อาจตอบผิด</span></div>
           <p id="ai-consent-hint" className="sr-only">ส่งยอดรวมลิงก์และจำนวนเปิดของคุณให้ OpenAI การเปลี่ยนตัวเลือกจะเริ่มแชตใหม่ ไม่ส่ง URL หรือข้อมูลบัญชี</p>
         </div>
       </div>

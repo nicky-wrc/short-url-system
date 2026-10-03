@@ -12,8 +12,9 @@ sequenceDiagram
     D-->>A: Stored link
     A-->>B: 201 Link with public Short URL
     B->>A: GET /api/links/:code/qr?download=1
-    A->>D: Read existing code
-    A-->>B: PNG containing /:code (no event)
+    A->>D: Read existing code and QR cache for current payload
+    A->>D: Insert PNG cache on GET cache miss (unique link/payload)
+    A-->>B: PNG containing /:code (no click event)
     B->>A: GET /api/links + GET /api/stats
     A->>D: Read owner rows + COUNT events
     A-->>B: My links / real UTC statistics

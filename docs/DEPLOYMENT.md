@@ -1,3 +1,5 @@
+Migration007 รอบนี้เพิ่ม private chat history, QR cache, CSV audit และ Preview request events แบบ additive. ต้อง migrate001–007 ก่อนรันcodeใหม่; Render start scriptรันให้เมื่อdeploy. ยังไม่ได้apply007บนproductionในรอบนี้. Tablesเก่า/owners/expiry/clicksยังอยู่.
+
 # Deploy checklist
 
 Login/My links requires migration 002_auth.sql before starting the new server. It preserves legacy links/events, adds nullable ownership/users/sessions and enables RLS. Use the schema/table-owner database role for the server; public Data API roles have no policies. Back up the database and review permissions before applying to a hosted database. Render startup completed hosted Supabase migrations on 2026-10-04; authenticated online acceptance checks remain pending.

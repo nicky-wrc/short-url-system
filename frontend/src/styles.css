@@ -1341,3 +1341,16 @@ td:first-child {
  .morph-loading-piece:nth-child(3) { transform:translate(-70%,70%); }
  .morph-loading-piece:nth-child(4) { transform:translate(70%,70%); }
 }
+
+.history-tools { align-items:flex-end; }
+.history-tools .search-field, .history-tools .csv-download { min-height:48px; }
+.history-tools .tag-filter select { height:48px; }
+.ai-history { padding:8px 16px; display:flex; gap:8px; align-items:center; }
+.ai-history select { min-width:0; flex:1; height:44px; }
+.ai-history-error { padding:0 16px; color:var(--danger); }
+
+.history-tools .tag-filter { margin:0; }
+.history-tools .csv-download { height:48px; white-space:nowrap; min-width:170px; }
+.history-tools { grid-template-columns:minmax(180px,1fr) minmax(140px,180px) 170px; }
+@media(max-width:1100px) { .history-heading { flex-wrap:wrap; } .history-tools { width:100%; } }
+@media(max-width:600px) { .history-tools { grid-template-columns:1fr; } .history-tools .tag-filter select { max-width:none; } .history-tools .csv-download { width:100%; } .history-tools p { text-align:left; } }

@@ -28,10 +28,10 @@ Expiry boundary ใช้ผล automated tests ที่ควบคุมเ�
 เปิด DIAGRAMS.md และ DATABASE.md:
 
 - Context แสดงสมาชิก/ผู้รับ/OpenAI; backend ไม่เรียกเว็บไซต์ปลายทาง
-- DFD Level 0 มี 9 processes ครบ Auth/Profile, create, edit/status/Tags, Preview, redirect/events, QR, history/stats, CSV และ AI; data stores 4 ตาราง
+- DFD Level 0 มี 9 processes ครบ Auth/Profile, create, edit/status/Tags, Preview, redirect/events, QR, history/stats, CSV และ AI; data stores 9 ตาราง
 - ER: link มี 0..1 owner, user มีหลาย links, link มีหลาย events; sessions ไม่มี FK เพราะ user ID อยู่ใน JSON; Tags เป็น array ใน links
 - Database: อธิบาย PK/UNIQUE/FK, nullable legacy ownership, COUNT events, UTC timestamptz (ยกเว้น sessions.expire), owner/code/event/GIN indexes และ WebP ที่เก็บใน DB
-- Architecture เป็น modular monolith; UI/API/redirect origin เดียว, persistent DB แยก; additive migrations 001–006 ก่อน start
+- Architecture เป็น modular monolith; UI/API/redirect origin เดียว, persistent DB แยก; additive migrations 001–007 ก่อน start
 
 ## 4. เหตุผลและข้อจำกัด (3–4 นาที)
 
@@ -45,7 +45,7 @@ Expiry boundary ใช้ผล automated tests ที่ควบคุมเ�
 | QR เปิดลิงก์ไหน? | Short URL /:code ไม่ใช่ original URL; Preview เป็นทางเลือก /preview/:code |
 | B เข้าข้อมูล A ได้ไหม? | private SQL กรอง owner จาก session; direct code ของคนอื่น 404 แต่ public Preview ยังเห็น title/destination ตามเจตนา |
 | ทำไมไม่ใช้ Supabase Auth? | Express/Passport Local + PG sessions มีแล้ว Supabase ใช้สำหรับ PostgreSQL hosting |
-| AI เห็นอะไรและทำอะไรได้? | guide + conversation; opt-in ยอดรวมเจ้าของ; ไม่มี action tools/target fetch/chat DB; store:false ไม่รับรอง retention ทุกประเภท |
+| AI เห็นอะไรและทำอะไรได้? | guide + conversation; opt-in ยอดรวมเจ้าของ; ไม่มี action tools/target fetch; มี private chat DB; store:false ไม่รับรอง retention ทุกประเภท |
 | จะขยายระบบอย่างไร? | distributed rate limits, abuse controls, query profiling, event rollups/retention; แยก service เมื่อ workload มีเหตุผล |
 
 ## หลักฐานที่นำเสนอได้

@@ -8,7 +8,7 @@ flowchart LR
   D4[("D4 click_events")]
   V -->|"Preview code / refresh / status recheck"| P4
   D3 -->|"title, stored URL, expiry, is_active; no private Tags"| P4
-  P4 -->|"hostname/full URL/status / missing; no event"| V
+  P4 -->|"hostname/full URL/status / missing; no click event"| V
   V -->|"GET or HEAD code from Short URL, QR or Continue"| P5
   D3 -->|"latest destination / availability under row lock"| P5
   P5 -->|"link_id + database time; qualifying GET only"| D4
@@ -16,5 +16,10 @@ flowchart LR
   U -->|"existing link code / download choice"| P6
   V -->|"existing link code / download choice"| P6
   D3 -->|"existing code"| P6
-  P6 -->|"PNG encoding public Short URL; no event"| U
-  P6 -->|"PNG encoding public Short URL; no event"| V
+  P6 -->|"PNG encoding public Short URL; no click event"| U
+  P6 -->|"PNG encoding public Short URL; no click event"| V
+  D7[("D7 qr_codes")]
+  D9[("D9 preview_events")]
+  P6 -->|"Short URL payload + PNG cache"| D7
+  D7 -->|"cached PNG for current public base URL"| P6
+  P4 -->|"successful metadata GET + status; no IP"| D9

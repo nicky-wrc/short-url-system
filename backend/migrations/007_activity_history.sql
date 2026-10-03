@@ -1,0 +1,49 @@
+CREATE TABLE IF NOT EXISTS chat_conversations (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ title VARCHAR(80) NOT NULL,
+ include_stats BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE chat_conversations ADD COLUMN IF NOT EXISTS include_stats BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS chat_owner_updated_idx ON chat_conversations(owner_id, updated_at DESC, id DESC);
+CREATE TABLE IF NOT EXISTS chat_messages (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ conversation_id BIGINT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+ role VARCHAR(9) NOT NULL CHECK (role IN ('user','assistant')),
+ content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 12000),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS chat_messages_order_idx ON chat_messages(conversation_id,id);
+CREATE TABLE IF NOT EXISTS qr_codes (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ link_id BIGINT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+ payload TEXT NOT NULL,
+ png BYTEA NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ UNIQUE(link_id,payload)
+);
+CREATE TABLE IF NOT EXISTS csv_exports (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ search VARCHAR(120) NOT NULL DEFAULT '',
+ tag VARCHAR(32),
+ row_count INTEGER NOT NULL CHECK (row_count BETWEEN 0 AND 10000),
+ filename VARCHAR(64) NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS csv_owner_created_idx ON csv_exports(owner_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS preview_events (
+ id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ link_id BIGINT NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+ status VARCHAR(8) NOT NULL CHECK (status IN ('active','disabled','expired')),
+ viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS preview_link_viewed_idx ON preview_events(link_id,viewed_at DESC);
+ALTER TABLE chat_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE qr_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE csv_exports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE preview_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON chat_conversations,chat_messages,qr_codes,csv_exports,preview_events FROM PUBLIC;

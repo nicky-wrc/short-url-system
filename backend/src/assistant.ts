@@ -10,6 +10,7 @@ const messageSchema = z.object({ role: z.enum(['user', 'assistant']), content: z
 export const chatSchema = z.object({
   messages: z.array(messageSchema).min(1).max(8),
   includeStats: z.boolean().default(false),
+  conversationId: z.string().regex(/^[1-9][0-9]{0,17}$/).optional(),
 }).strict().superRefine(({ messages }, ctx) => {
   if (messages[0]?.role !== 'user' || messages.at(-1)?.role !== 'user' || messages.some((m, i) => m.role !== (i % 2 ? 'assistant' : 'user'))) {
     ctx.addIssue({ code: 'custom', message: 'Send alternating user/assistant messages ending with your question.' });
@@ -122,6 +123,26 @@ export function createAssistantRouter(dependencies: AssistantDependencies = {}) 
   const settings = dependencies.settings ?? { key: config.OPENAI_API_KEY, model: config.OPENAI_MODEL };
   const inFlight = new Set<string>();
   router.use(requireAuth);
+  const idSchema = z.string().regex(/^[1-9][0-9]{0,17}$/);
+  router.get('/conversations', async (req,res) => {
+    const result = await pool.query('SELECT id::text,title,created_at,updated_at FROM chat_conversations WHERE owner_id=$1 ORDER BY updated_at DESC,id DESC LIMIT 100', [req.user!.id]);
+    res.json({conversations:result.rows});
+  });
+  router.get('/conversations/:id', async (req,res) => {
+    const id = idSchema.safeParse(req.params.id);
+    if (!id.success) { res.status(404).json({error:'Conversation not found.'}); return; }
+    const owned = await pool.query('SELECT id,include_stats FROM chat_conversations WHERE id=$1 AND owner_id=$2',[id.data,req.user!.id]);
+    if (!owned.rowCount) { res.status(404).json({error:'Conversation not found.'}); return; }
+    const result = await pool.query('SELECT role,content FROM chat_messages WHERE conversation_id=$1 ORDER BY id',[id.data]);
+    res.json({messages:result.rows,includeStats:owned.rows[0].include_stats});
+  });
+  router.delete('/conversations/:id', protectWrite, async (req,res) => {
+    const id = idSchema.safeParse(req.params.id);
+    if (!id.success) { res.status(404).json({error:'Conversation not found.'}); return; }
+    const result = await pool.query('DELETE FROM chat_conversations WHERE id=$1 AND owner_id=$2',[id.data,req.user!.id]);
+    if (!result.rowCount) { res.status(404).json({error:'Conversation not found.'}); return; }
+    res.json({deleted:true});
+  });
   router.get('/status', (_req, res) => res.json({ available: !!settings.key, provider: 'OpenAI' }));
   const limiter = (windowMs: number, limit: number, perUser = false) => rateLimit({ windowMs, limit, standardHeaders:'draft-8', legacyHeaders:false,
     ...(perUser ? { keyGenerator: (req: Express.Request) => req.user!.id } : {}),
@@ -139,10 +160,41 @@ export function createAssistantRouter(dependencies: AssistantDependencies = {}) 
     const disconnect = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', disconnect);
     try {
+      let history: ChatMessage[] = [];
+      if (parsed.data.conversationId) {
+        const owned = await pool.query('SELECT id,include_stats FROM chat_conversations WHERE id=$1 AND owner_id=$2',[parsed.data.conversationId,ownerId]);
+        if (!owned.rowCount) { res.status(404).json({error:'Conversation not found.'}); return; }
+        if (owned.rows[0].include_stats !== parsed.data.includeStats) { res.status(400).json({error:'การเปลี่ยนสิทธิ์ส่งสถิติต้องเริ่มแชตใหม่'}); return; }
+        const count = await pool.query('SELECT COUNT(*)::int AS count FROM chat_messages WHERE conversation_id=$1',[parsed.data.conversationId]);
+        if (count.rows[0].count >= 200) { res.status(413).json({error:'บทสนทนาครบ 100 คำถามแล้ว กรุณาเริ่มแชตใหม่'}); return; }
+        const previous = await pool.query('SELECT role,content FROM (SELECT id,role,content FROM chat_messages WHERE conversation_id=$1 ORDER BY id DESC LIMIT 6) recent ORDER BY id',[parsed.data.conversationId]);
+        history = previous.rows.map(row => ({role:row.role,content:row.content.slice(0,1000)}));
+      }
+      const question = parsed.data.messages.at(-1)!.content;
+      history.push({role:'user',content:question});
+      while (history.reduce((sum,m)=>sum+m.content.length,0)>4000 && history.length>1) history=history.slice(2);
       const summary = parsed.data.includeStats ? await (dependencies.summary ?? ownedAssistantSummary)(ownerId) : null;
       if (controller.signal.aborted) throw new Error('aborted');
-      const reply = await requestAssistant(parsed.data.messages, summary, { ...settings, signal: controller.signal, fetcher: dependencies.fetcher });
-      if (!res.destroyed) res.json({ reply, provider:'OpenAI', ...(summary ? {summary} : {}) });
+      const reply = await requestAssistant(history, summary, { ...settings, signal: controller.signal, fetcher: dependencies.fetcher });
+      // Persist successful pairs atomically. A provider failure creates no orphan turn.
+      const client = await pool.connect();
+      let conversationId = parsed.data.conversationId;
+      try {
+        await client.query('BEGIN');
+        if (!conversationId) {
+          const made = await client.query('INSERT INTO chat_conversations(owner_id,title,include_stats) VALUES($1,$2,$3) RETURNING id::text',[ownerId,[...question].slice(0,80).join(''),parsed.data.includeStats]);
+          conversationId = made.rows[0].id;
+        }
+        const owned = await client.query('SELECT id,include_stats FROM chat_conversations WHERE id=$1 AND owner_id=$2 FOR UPDATE',[conversationId,ownerId]);
+        if (!owned.rowCount) throw new AssistantError(404,'Conversation not found.');
+        const count = await client.query('SELECT COUNT(*)::int AS count FROM chat_messages WHERE conversation_id=$1',[conversationId]);
+        if (count.rows[0].count>=200) throw new AssistantError(413,'บทสนทนาครบ 100 คำถามแล้ว กรุณาเริ่มแชตใหม่');
+        await client.query("INSERT INTO chat_messages(conversation_id,role,content) VALUES($1,'user',$2),($1,'assistant',$3)",[conversationId,question,reply]);
+        await client.query('UPDATE chat_conversations SET updated_at=NOW() WHERE id=$1',[conversationId]);
+        await client.query('COMMIT');
+      } catch(error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+      if (!res.destroyed) res.json({ reply, conversationId, provider:'OpenAI', ...(summary ? {summary} : {}) });
     } catch (error) {
       if (res.destroyed) return;
       if (controller.signal.aborted) res.status(504).json({error:'AI ใช้เวลานานเกินไป กรุณาลองใหม่'});

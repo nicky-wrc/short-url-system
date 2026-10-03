@@ -11,13 +11,13 @@ flowchart TB
     C["AI assistant: bounded authenticated request"]
     START["start-render.mjs: derive origin / additive migrations / start"]
   end
-  D[("Supabase PostgreSQL: users / sessions / links / click_events")]
+  D[("Supabase PostgreSQL: 9 tables: accounts, links, clicks, chat, QR, CSV audit, Preview")]
   AI["OpenAI Responses API · optional server-only key"]
   T["Destination website"]
   B <-->|"HTTPS same origin"| H
   H --> E
   START --> E
-  START -->|"migrations001-006"| D
+  START -->|"migrations001-007"| D
   E --> S
   S -->|"HTML / JS / CSS"| B
   E --> A
@@ -29,9 +29,9 @@ flowchart TB
   A -->|"session owner / CSRF for writes"| M
   A -->|"session owner / CSRF"| C
   M <-->|"parameterized SQL; owner scope"| D
-  P -->|"read stored link; never fetch destination"| D
+  P -->|"read stored link / QR cache / Preview events; no target fetch"| D
   X <-->|"row lock / status check / event commit"| D
-  C -->|"opt-in owned aggregate reads"| D
+  C -->|"owned chat persistence / opt-in aggregate reads"| D
   C <-->|"HTTPS conversation / answer; store:false"| AI
   X -->|"302 Location via response"| B
   B -->|"follow Location; query / fragment preserved"| T

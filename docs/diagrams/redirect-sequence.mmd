@@ -5,10 +5,12 @@ sequenceDiagram
   participant T as Destination website
   B->>A: GET /preview/:code + /api/links/:code/preview
   A->>D: Read destination/title/expiry/is_active
-  A-->>B: Public Preview/status, no event / no target fetch
+  A->>D: INSERT preview_events for metadata GET, not HEAD
+  A-->>B: Public Preview/status, no click event / no target fetch
   Note over B: No auto redirect on React render or refresh
   B->>A: Continue: GET preview metadata again
   A->>D: Read current status for feedback
+  A->>D: INSERT preview_events for status recheck GET
   A-->>B: Metadata, unavailable remains on Preview
   B->>A: If active: GET /:code (also direct Short URL/QR flow)
   A->>D: BEGIN, SELECT current link FOR SHARE

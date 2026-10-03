@@ -68,6 +68,22 @@ Email lowercase, max254; password min10 characters/max72 UTF-8 bytes; registrati
 
 Create/edit each30/min/IP. AI10/min/IP +60/h/user; 1 in-flight/user, max4/process;30s timeout. All limit stores are in-memory; profile/status/read/redirect endpoints do not have these creation/edit limiters
 
-AI input strict `{messages:[{role:'user'|'assistant',content}],includeStats?:boolean}`; alternating starts/ends user,1–8 messages,1–1000 chars each, total<=4000 (valid alternating request effectively max7); includeStats defaultfalse. Server fixes model/URL/key; opt-in summary own aggregate only; `store:false`, max_output_tokens2048, output text<=12000. No action tools or chat persistence. Read [AI setup/error contract](AI-ASSISTANT.md)
+AI input strict `{messages:[{role:'user'|'assistant',content}],includeStats?:boolean,conversationId?:string}`; alternating starts/ends user,1–8 messages,1–1000 chars each, total<=4000 (valid alternating request effectively max7); includeStats defaultfalse. Server fixes model/URL/key; opt-in summary own aggregate only; `store:false`, max_output_tokens2048, output text<=12000. No action tools; successful pairs persist privately in PostgreSQL. Read [AI setup/error contract](AI-ASSISTANT.md)
 
 JSON body limit16KiB; no credentials in frontend; same-origin production/dev proxy, no general CORS middleware. Unknown internal failures generic500 without DB/provider body. These controls describe implementation, not penetration-test certification
+
+## Persistence เพิ่มใน migration 007
+
+| Endpoint | สิทธิ์ | ผล |
+|---|---|---|
+| GET /api/assistant/conversations | session | 100 บทสนทนาของเจ้าของล่าสุด; conversations array |
+| GET /api/assistant/conversations/:id | session + owner | messages เรียง id; missing/foreign=404 |
+| DELETE /api/assistant/conversations/:id | session + owner + CSRF | deleted:true; cascade messages |
+
+POST chat ส่ง conversationId optional decimal string; reply เพิ่ม conversationId. History จาก client ไม่ใช้เป็นบริบทที่เชื่อถือ; server โหลดเอง. DB transaction บันทึกเฉพาะ successful pair. สูงสุด100 turns/chat; เกิน=413.
+QR GET ใช้ qr_codes cache แบบ unique(link_id,payload), ไม่เปลี่ยน QR เมื่อแก้ destination; PUBLIC_BASE_URL เปลี่ยนจะสร้าง payloadใหม่. HEAD ไม่สร้าง cache.
+CSV GET สำเร็จเก็บ csv_exports(owner,filters,row_count,filename) ไม่เก็บ CSV bytes; overlimit/error/HEAD ไม่สร้าง audit. Audit ยืนยันว่าเตรียม response สำเร็จ ไม่ยืนยันว่า browser รับครบหรือเปิด Excel.
+Preview metadata GET บันทึก preview_events(link,status,time) เฉพาะ code ที่มีและ URL ที่ parse ได้ รวม disabled/expired; HEAD/missing/invalid ไม่บันทึก. อ่านหน้า HTML /preview/:code ไม่บันทึกเอง; metadata API อาจถูกอ่านหลายครั้ง (เช่น refresh/Continue/React development) จึงเป็นจำนวน request ไม่ใช่คน. ไม่เก็บ IP/UA. ทั้งสามไม่สร้าง click_events.
+QR/Preview metadata share rate limit120 requests/min/IP/process,429 JSON. ระบบไม่เปิด public API อ่าน audit/events/cache raw หรือข้อมูลแชตของผู้อื่น.
+
+อ่านบทสนทนาคืน includeStats จากconversation.include_stats. ต่อแชตต้องส่งค่าincludeStatsให้ตรงค่าของบทสนทนา มิฉะนั้น400และไม่เรียกOpenAI. เปลี่ยนconsentต้องเริ่มconversationใหม่.

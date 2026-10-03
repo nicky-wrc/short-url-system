@@ -146,6 +146,7 @@ app.get('/api/links/export.csv', requireAuth, async (req, res) => {
     res.status(413).json({ error: `Export exceeds ${CSV_EXPORT_LIMIT.toLocaleString('en')} links. Narrow your search and try again.` }); return;
   }
   const filename = `my-links-${new Date(now).toISOString().slice(0, 10)}.csv`;
+  if (req.method === 'GET') await pool.query('INSERT INTO csv_exports(owner_id,search,tag,row_count,filename) VALUES($1,$2,$3,$4,$5)', [req.user!.id,parsed.data.q,parsed.data.tag ?? null,result.rows.length,filename]);
   res.set('Content-Disposition', `attachment; filename="${filename}"`);
   res.type('text/csv').send(linksCsv(result.rows, config.PUBLIC_BASE_URL, now));
 });
@@ -162,25 +163,34 @@ app.get('/api/stats', requireAuth, async (req, res) => {
   res.json({ totalLinks: Number(links.rows[0].total), activeLinks: Number(links.rows[0].active), totalClicks: Number(clicks.rows[0].total), todayClicks: Number(clicks.rows[0].today), daily: daily.rows, timezone: 'UTC' });
 });
 
-app.get('/api/links/:code/qr', async (req, res) => {
-  if (!codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
-  const found = await pool.query('SELECT code FROM links WHERE code = $1', [req.params.code]);
+const publicMetadataLimit = rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many metadata requests. Please try again later.'}});
+app.get('/api/links/:code/qr', publicMetadataLimit, async (req, res) => {
+  if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
+  const found = await pool.query('SELECT id, code FROM links WHERE code = $1', [req.params.code]);
   if (!found.rowCount) { res.status(404).json({ error: 'Link not found.' }); return; }
-  const png = await QRCode.toBuffer(`${config.PUBLIC_BASE_URL}/${req.params.code}`, { width: 512, margin: 4, errorCorrectionLevel: 'M' });
+  const payload = `${config.PUBLIC_BASE_URL}/${req.params.code}`;
+  const cached = await pool.query('SELECT png FROM qr_codes WHERE link_id=$1 AND payload=$2', [found.rows[0].id,payload]);
+  let png: Buffer = cached.rows[0]?.png;
+  if (!png) {
+    png = await QRCode.toBuffer(payload, { width: 512, margin: 4, errorCorrectionLevel: 'M' });
+    if (req.method === 'GET') await pool.query('INSERT INTO qr_codes(link_id,payload,png) VALUES($1,$2,$3) ON CONFLICT(link_id,payload) DO NOTHING', [found.rows[0].id,payload,png]);
+  }
   res.type('png');
   if (req.query.download === '1') res.set('Content-Disposition', `attachment; filename="link-${req.params.code}.png"`);
   res.send(png);
 });
 
 // Read stored metadata only; never fetch the destination or record an opening.
-app.get('/api/links/:code/preview', async (req, res) => {
-  if (!codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
-  const found = await pool.query('SELECT code, title, original_url, expires_at, is_active FROM links WHERE code = $1', [req.params.code]);
+app.get('/api/links/:code/preview', publicMetadataLimit, async (req, res) => {
+  if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).json({ error: 'Link not found.' }); return; }
+  const found = await pool.query('SELECT id, code, title, original_url, expires_at, is_active FROM links WHERE code = $1', [req.params.code]);
   const link = found.rows[0];
   if (!link) { res.status(404).json({ error: 'Link not found.' }); return; }
+  const destinationHost = parseHttpDestination(link.original_url).hostname;
+  if (req.method === 'GET') await pool.query('INSERT INTO preview_events(link_id,status) VALUES($1,$2)', [link.id,linkStatus(link.is_active,link.expires_at,clock.now())]);
   res.json({
     code: link.code, title: link.title, originalUrl: link.original_url,
-    destinationHost: parseHttpDestination(link.original_url).hostname,
+    destinationHost,
     shortUrl: `${config.PUBLIC_BASE_URL}/${link.code}`,
     previewUrl: `${config.PUBLIC_BASE_URL}/preview/${link.code}`,
     expiresAt: link.expires_at,
@@ -244,7 +254,7 @@ app.get('/preview/:code', async (req, res) => {
 
 app.get('/:code', async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  if (!codePattern.test(req.params.code)) { res.status(404).type('text').send('This short link does not exist.'); return; }
+  if (typeof req.params.code !== 'string' || !codePattern.test(req.params.code)) { res.status(404).type('text').send('This short link does not exist.'); return; }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

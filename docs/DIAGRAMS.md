@@ -1,6 +1,6 @@
 # Link Studio — System diagrams
 
-ตรวจเทียบ source code และ migrations 001–006 เมื่อ 2026-10-04: [System design](SYSTEM.md), [API](API.md), [Data dictionary](DATABASE.md) ระบบมี 4 application tables จริง ไม่มี table สำหรับ Tags/QR/สถิติ/chat
+ตรวจเทียบ source code และ migrations 001–007 เมื่อ 2026-10-04: [System design](SYSTEM.md), [API](API.md), [Data dictionary](DATABASE.md) ระบบมี 9 application tables รวม private chat, QR cache, CSV export audit และ Preview views; Tags อยู่ใน links
 
 Mermaid ด้านล่างเปิดดูได้บน GitHub; source แยกอยู่ใน `docs/diagrams/*.mmd` สำหรับ export/นำเสนอ ทุก process เป็นฟังก์ชันภายใน service เดียว ไม่ใช่ microservice
 
@@ -24,7 +24,7 @@ flowchart LR
 
 ## DFD Level 0
 
-แสดง external entities, numbered processes, data stores และ named data flows ครบฟังก์ชันหลักและฟีเจอร์ปัจจุบัน D1–D4 เป็นตารางใน PostgreSQL เดียวกัน ลูกศร store→process เป็นข้อมูลที่อ่าน และ process→store เป็นข้อมูลที่เขียน ไม่ใช่ลำดับเวลา
+แสดง external entities, numbered processes, data stores และ named data flows ครบฟังก์ชันหลักและฟีเจอร์ปัจจุบัน D1–D9 เป็นตารางใน PostgreSQL เดียวกัน ลูกศร store→process เป็นข้อมูลที่อ่าน และ process→store เป็นข้อมูลที่เขียน ไม่ใช่ลำดับเวลา
 
 ```mermaid
 flowchart TB
@@ -65,7 +65,7 @@ flowchart TB
   P3 -->|"saved Link / validation or not-found error"| U
   V -->|"Preview code / refresh / status recheck"| P4
   D3 -->|"title, stored URL, expiry, is_active; no private Tags"| P4
-  P4 -->|"hostname/full URL/status / missing; no event"| V
+  P4 -->|"hostname/full URL/status / missing; no click event"| V
   V -->|"GET or HEAD code from Short URL, QR or Continue"| P5
   D3 -->|"latest destination / availability under row lock"| P5
   P5 -->|"link_id + database time; qualifying GET only"| D4
@@ -73,8 +73,8 @@ flowchart TB
   U -->|"existing link code / download choice"| P6
   V -->|"existing link code / download choice"| P6
   D3 -->|"existing code"| P6
-  P6 -->|"PNG encoding public Short URL; no event"| U
-  P6 -->|"PNG encoding public Short URL; no event"| V
+  P6 -->|"PNG encoding public Short URL; no click event"| U
+  P6 -->|"PNG encoding public Short URL; no click event"| V
   U -->|"q, single Tag, page / owned totals request"| P7
   D3 -->|"owned history, private Tags, active/total link counts"| P7
   D4 -->|"owned event counts / UTC daily totals"| P7
@@ -82,13 +82,26 @@ flowchart TB
   U -->|"q + single Tag; all matching pages"| P8
   D3 -->|"owned matching rows / status / UTC dates"| P8
   D4 -->|"matching link event counts"| P8
-  P8 -->|"UTF-8 BOM CSV / validation or >10000 error; no event"| U
+  P8 -->|"UTF-8 BOM CSV / validation or >10000 error; no click event"| U
   U -->|"question / recent conversation / optional stats consent"| P9
   D3 -->|"own aggregate link totals only when opted in"| P9
   D4 -->|"own aggregate opens only when opted in"| P9
   P9 -->|"guide + conversation + optional aggregate; store:false"| AI
   AI -->|"plain-text answer / failure"| P9
-  P9 -->|"answer / sanitized error; no mutation/events"| U
+  P9 -->|"answer / sanitized error; saved chat / no link mutation or click events"| U
+  D7[("D7 qr_codes")]
+  D9[("D9 preview_events")]
+  P6 -->|"Short URL payload + PNG cache"| D7
+  D7 -->|"cached PNG for current public base URL"| P6
+  P4 -->|"successful metadata GET + status; no IP"| D9
+  D5[("D5 chat_conversations")]
+  D6[("D6 chat_messages")]
+  D8[("D8 csv_exports")]
+  P8 -->|"owner + filters + filename + row count"| D8
+  P9 -->|"successful question-answer pair / delete owned chat"| D6
+  D6 -->|"owned stored recent messages"| P9
+  P9 -->|"new conversation / updated time / delete owned chat"| D5
+  D5 -->|"own recent conversations / verified ownership"| P9
 ```
 
 ### Process → implementation mapping
@@ -103,7 +116,7 @@ flowchart TB
 | 6.0 | GET /api/links/:code/qr | read links, generate PNG in memory |
 | 7.0 | GET /api/links, /api/tags, /api/stats | owner-scoped reads; stats ignore q/tag filters |
 | 8.0 | GET /api/links/export.csv; csv.ts | owner-scoped reads, no persisted export |
-| 9.0 | /api/assistant/status and /chat; assistant.ts | optional aggregate reads, external API, no chat table |
+| 9.0 | /api/assistant/status and /chat; assistant.ts | optional aggregate reads, external API, owned chat_conversations/chat_messages |
 
 Public processes 4–6 do not require Login. Private processes use identity from server session; no supplied owner_id can select another owner. Legacy ownerless links still work publicly. Redirect is the only business flow that writes click_events; session bootstrap may write sessions independently.
 
@@ -153,6 +166,48 @@ erDiagram
     json sess "NOT NULL; user ID / CSRF / authExpiresAt / cookie"
     timestamp6 expire "NOT NULL; WITHOUT TIME ZONE"
   }
+  USERS ||..o{ CHAT_CONVERSATIONS : owns
+  CHAT_CONVERSATIONS ||..o{ CHAT_MESSAGES : contains
+  LINKS ||..o{ QR_CODES : caches
+  USERS ||..o{ CSV_EXPORTS : exports
+  LINKS ||..o{ PREVIEW_EVENTS : viewed
+  CHAT_CONVERSATIONS {
+    bigint id PK
+    bigint owner_id FK "NOT NULL; CASCADE"
+    varchar80 title "NOT NULL"
+    boolean include_stats "NOT NULL; default false"
+    timestamptz created_at "NOT NULL; NOW()"
+    timestamptz updated_at "NOT NULL; NOW()"
+  }
+  CHAT_MESSAGES {
+    bigint id PK
+    bigint conversation_id FK "NOT NULL; CASCADE"
+    varchar9 role "user or assistant"
+    text content "1-12000 characters"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  QR_CODES {
+    bigint id PK
+    bigint link_id FK "NOT NULL; CASCADE"
+    text payload "UNIQUE with link_id"
+    bytea png "NOT NULL"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  CSV_EXPORTS {
+    bigint id PK
+    bigint owner_id FK "NOT NULL; CASCADE"
+    varchar120 search "NOT NULL; default empty"
+    varchar32 tag "nullable"
+    integer row_count "0-10000"
+    varchar64 filename "NOT NULL"
+    timestamptz created_at "NOT NULL; NOW()"
+  }
+  PREVIEW_EVENTS {
+    bigint id PK
+    bigint link_id FK "NOT NULL; CASCADE"
+    varchar8 status "active disabled expired"
+    timestamptz viewed_at "NOT NULL; NOW()"
+  }
 ```
 
 ER type labels varchar254/varchar80/varchar120/varchar32/timestamp6/text_array หมายถึง PostgreSQL VARCHAR(254)/(80)/(120)/(32), TIMESTAMP(6) และ TEXT[] ตาม [Data Dictionary](DATABASE.md) ไม่ใช่ custom database types
@@ -177,13 +232,13 @@ flowchart TB
     C["AI assistant: bounded authenticated request"]
     START["start-render.mjs: derive origin / additive migrations / start"]
   end
-  D[("Supabase PostgreSQL: users / sessions / links / click_events")]
+  D[("Supabase PostgreSQL: 9 tables: accounts, links, clicks, chat, QR, CSV audit, Preview")]
   AI["OpenAI Responses API · optional server-only key"]
   T["Destination website"]
   B <-->|"HTTPS same origin"| H
   H --> E
   START --> E
-  START -->|"migrations001-006"| D
+  START -->|"migrations001-007"| D
   E --> S
   S -->|"HTML / JS / CSS"| B
   E --> A
@@ -195,9 +250,9 @@ flowchart TB
   A -->|"session owner / CSRF for writes"| M
   A -->|"session owner / CSRF"| C
   M <-->|"parameterized SQL; owner scope"| D
-  P -->|"read stored link; never fetch destination"| D
+  P -->|"read stored link / QR cache / Preview events; no target fetch"| D
   X <-->|"row lock / status check / event commit"| D
-  C -->|"opt-in owned aggregate reads"| D
+  C -->|"owned chat persistence / opt-in aggregate reads"| D
   C <-->|"HTTPS conversation / answer; store:false"| AI
   X -->|"302 Location via response"| B
   B -->|"follow Location; query / fragment preserved"| T
@@ -222,8 +277,9 @@ sequenceDiagram
     D-->>A: Stored link
     A-->>B: 201 Link with public Short URL
     B->>A: GET /api/links/:code/qr?download=1
-    A->>D: Read existing code
-    A-->>B: PNG containing /:code (no event)
+    A->>D: Read existing code and QR cache for current payload
+    A->>D: Insert PNG cache on GET cache miss (unique link/payload)
+    A-->>B: PNG containing /:code (no click event)
     B->>A: GET /api/links + GET /api/stats
     A->>D: Read owner rows + COUNT events
     A-->>B: My links / real UTC statistics
@@ -240,10 +296,12 @@ sequenceDiagram
   participant T as Destination website
   B->>A: GET /preview/:code + /api/links/:code/preview
   A->>D: Read destination/title/expiry/is_active
-  A-->>B: Public Preview/status, no event / no target fetch
+  A->>D: INSERT preview_events for metadata GET, not HEAD
+  A-->>B: Public Preview/status, no click event / no target fetch
   Note over B: No auto redirect on React render or refresh
   B->>A: Continue: GET preview metadata again
   A->>D: Read current status for feedback
+  A->>D: INSERT preview_events for status recheck GET
   A-->>B: Metadata, unavailable remains on Preview
   B->>A: If active: GET /:code (also direct Short URL/QR flow)
   A->>D: BEGIN, SELECT current link FOR SHARE

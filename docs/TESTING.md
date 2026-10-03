@@ -2,7 +2,7 @@
 
 ## Current status — 2026-10-04
 
-Documentation verification ในรอบนี้: ตรวจ route coverage 25 explicit handlers พร้อม HEAD behavior, schema 4 ตาราง/22 columns จาก migrations 001–006, source parity ของ Mermaid หลัก 7 ภาพ และ render ผ่าน browser 10 ภาพรวม DFD views; export เป็น SVG ตรวจภาพ ER/DFD และลิงก์ไฟล์ใน Markdown ไม่ขาด `git diff --check` ผ่าน ไม่แก้ application code/dependencies ไม่ rerun integration/typecheck/build ที่ไม่เกี่ยวกับ docs และไม่แตะ production data
+Historical documentation verification ก่อน migration007: ตรวจ route coverage 25 explicit handlers พร้อม HEAD behavior, schema 4 ตาราง/22 columns จาก migrations 001–006, source parity ของ Mermaid หลัก 7 ภาพ และ render ผ่าน browser 10 ภาพรวม DFD views; export เป็น SVG ตรวจภาพ ER/DFD และลิงก์ไฟล์ใน Markdown ไม่ขาด `git diff --check` ผ่าน ไม่แก้ application code/dependencies ไม่ rerun integration/typecheck/build ที่ไม่เกี่ยวกับ docs และไม่แตะ production data
 
 - Source ปัจจุบันมี 52 top-level backend tests + 3 dev readiness tests = 55 tests ตามผลตรวจ local ล่าสุดในส่วน Private tags ด้านล่าง (ไม่ใช่ 9 หรือ 15 tests ซึ่งเป็น record รุ่นเก่า)
 - ครอบคลุม auth/ownership/CSRF/session/Profile/avatar, create/URL/alias, Preview/QR/redirect/concurrency/expiry/status/edit/Tags, search/stats/CSV และ AI contracts ด้วย provider fixtures
@@ -194,3 +194,13 @@ Browser verification on the local isolated QA database: upload PNG, replace with
 ## Private tags verification (2026-10-03)
 
 55 tests passed (52 backend plus 3 readiness). Added three tag regression cases covering owner scoping, public metadata exclusion, normalize/deduplicate/clear/reject behavior, query+tag pagination and CSV across pages, unchanged events/QR and repeated additive migrations. Extended the existing pre-auth migration fixture through 006 and verified empty tags on old rows. Disposable database: loopback port 55432, shorturl_ui_test, explicit TEST_DATABASE_RESET=true; remote/application database guards retained. Browser QA used separate persistent local shorturl_test with OpenAI disabled; no Supabase migration or reset.
+
+## Activity persistence verification — 2026-10-04
+
+Implemented migration007 adds5tables (total9,49columns) preserving legacy schema. npm run typecheck and npm run build passed. npm test passed54PostgreSQL backend cases +3dev readiness cases =57. The runner uses guarded loopback _test database, reset opt-in and disables real OpenAI key. No production reset/migration/deploy performed.
+
+New regression cases verify QR cache reused under concurrent GET, HEAD does not create cache; Preview GET stores separate views, HEAD does not; CSV GET stores owner/filter/count/filename audit, HEAD does not; all keep click_events unchanged; additive migrations rerun without losing cache. Chat verifies atomic successful pairs, authoritative DB history, foreign owner GET/POST/DELETE blocked404 and DB unchanged, anonymous401, missingCSRF403, delete cascadesmessages, failedprovider creates no conversation and changedstatsconsent400.
+
+Browser: isolated localQA on3116 with genuine localPostgreSQL rows and explicitly offline provider fixture. Verified chat send, saved history after refresh, reopen on390px, select keyboard Shift+Tab reaches Close; history toolbar at390/768/1440. At1440 input/select/button each48px with equal bottom coordinates; mobile stacks. Screenshots in ignoredtmp/qa-ui. AttemptedCSV browserdownload event timedout, so completed browserfile download/Excel notverified; CSV endpoint/content/audit verifiedthrough integrationtests. No realAI request/credit spending and no online acceptance or physicalQRscan inthisround.
+
+Mermaid10images rendered in browser successfully and re-exportedSVG; ERincludes9tables, newFKs and consentcolumn. Primary7embeddedblocks synchronizedwith.mmd. InspectSVGin browser and zoomfullpage for dense DFD. No appdependencies added. Newchat perconversation max100turns andlist100latest; no automaticretention for audit/cache. Cleanclone install and Docker build not rerun thisround.

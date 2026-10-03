@@ -1,6 +1,6 @@
 # Link Studio — การออกแบบระบบปัจจุบัน
 
-ตรวจเทียบ source code และ migrations 001–006 เมื่อ 2026-10-04 เอกสารนี้อธิบายสิ่งที่ implementation ทำจริง ไม่ใช่รายการฟีเจอร์ที่วางแผนไว้
+ตรวจเทียบ source code และ migrations 001–007 เมื่อ 2026-10-04 เอกสารนี้อธิบายสิ่งที่ implementation ทำจริง ไม่ใช่รายการฟีเจอร์ที่วางแผนไว้
 
 - [เว็บออนไลน์](https://synerry-link-studio.onrender.com) · [Repository](https://github.com/nicky-wrc/short-url-system)
 - [DFD / ER / Architecture / Sequence](DIAGRAMS.md)
@@ -24,12 +24,12 @@
 | แก้ลิงก์ | แก้ title / originalUrl / private tags เฉพาะเจ้าของ; code, owner, expiry, status และ events คงเดิม | `app.ts`; links |
 | ปิด/เปิด | ส่ง isActive true/false; idempotent; ไม่ต่ออายุหรือทำให้สถิติเดิมหาย | `app.ts`, `link-status.ts`; links |
 | Tags | เลือกหรือพิมพ์, เพิ่มด้วย Enter/+; สูงสุด 8; NFC/trim/lowercase/deduplicate; private | `TagsInput.tsx`, `tags.ts`; links.tags |
-| Preview | `/preview/:code`; อ่าน hostname ด้วย URL parser และสถานะ; Continue ผ่าน backend | `LinkPreviewPage.tsx`, `app.ts`; อ่าน links เท่านั้น |
+| Preview | `/preview/:code`; อ่าน hostname ด้วย URL parser และสถานะ; Continue ผ่าน backend | `LinkPreviewPage.tsx`, `app.ts`; links / preview_events (แยกจาก clicks) |
 | Redirect | `/:code`; transaction + FOR SHARE ตรวจสถานะล่าสุด, INSERT event, COMMIT แล้ว 302 | `app.ts`; links / click_events |
-| QR | server สร้าง PNG 512×512 จาก Short URL; สร้าง/ดาวน์โหลดไม่นับ event | `app.ts`; อ่าน code จาก links |
-| My links / CSV | owner scope + search AND single tag; sort created_at DESC, id DESC; CSV ทุกหน้า สูงสุด 10,000 แถว | `app.ts`, `csv.ts`; links / click_events |
+| QR | server สร้าง PNG 512×512 จาก Short URL; สร้าง/ดาวน์โหลดไม่นับ event | `app.ts`; links / qr_codes (PNG cache) |
+| My links / CSV | owner scope + search AND single tag; sort created_at DESC, id DESC; CSV ทุกหน้า สูงสุด 10,000 แถว | `app.ts`, `csv.ts`; links / click_events / csv_exports |
 | Analytics | ยอดทั้งหมด, active, opens วันนี้, 7 วัน UTC; ไม่ถูกกรองด้วยคำค้น/Tag ของประวัติ | `app.ts`; links / click_events |
-| AI assistant | ตอบคำถาม/แนะนำชื่อ; optional opt-in ส่งยอดรวมเจ้าของ; ไม่สร้าง/แก้ลิงก์; ไม่มี tools/web browsing | `assistant.ts`; อ่านยอดรวม + OpenAI |
+| AI assistant | ตอบคำถาม/แนะนำชื่อ; optional opt-in ส่งยอดรวมเจ้าของ; ไม่สร้าง/แก้ลิงก์; ไม่มี tools/web browsing | `assistant.ts`; chat_conversations / chat_messages + ยอดรวม + OpenAI |
 
 ## โครงสร้างและเหตุผล
 
@@ -53,7 +53,7 @@ Private queries ใช้ user ID จาก session และ parameterized SQL;
 
 Rate limits ใช้ memory ต่อ process: Login/Register/password อย่างละ 20/15min/IP, avatar updates 20/15min/IP, create/edit อย่างละ 30/min/IP, AI 10/min/IP และ 60/h/user; AI พร้อมกันสูงสุด 1/user และ 4/process, timeout 30s ไม่มี distributed quota หรือการจำกัดทุก read/redirect/status/profile request ไม่อ้างว่าไม่มีช่องโหว่เพียงเพราะ tests ผ่าน
 
-AI ใช้ server-only key และ fixed Responses endpoint, `store:false`; opt-in ส่งเฉพาะ asOf/timezone/ยอดรวม ไม่ส่งรายการลิงก์/Tags/รูป/credentials อัตโนมัติ แต่ข้อความที่ผู้ใช้พิมพ์เองถูกส่งให้ provider การสนทนาอยู่ใน React memory ไม่มีตาราง chat; store:false ไม่ใช่คำรับรองว่าผู้ให้บริการไม่เก็บข้อมูลทุกประเภท
+AI ใช้ server-only key และ fixed Responses endpoint, `store:false`; opt-in ส่งเฉพาะ asOf/timezone/ยอดรวม ไม่ส่งรายการลิงก์/Tags/รูป/credentials อัตโนมัติ แต่ข้อความที่ผู้ใช้พิมพ์เองถูกส่งให้ provider บทสนทนาสำเร็จเก็บใน chat_conversations/chat_messages แยกเจ้าของ; เรียกอ่านต่อและลบได้; store:false ไม่ใช่คำรับรองว่าผู้ให้บริการไม่เก็บข้อมูลทุกประเภท
 
 ## สถานะตรวจและส่งมอบ
 

@@ -26,7 +26,7 @@ GitHub Actions workflow จะรัน typecheck/build/integration tests ด้
 |---|---|
 | [System design](docs/SYSTEM.md) | ขอบเขตทุกฟังก์ชัน, architecture, privacy และนิยามสถิติ |
 | [DFD / ER / Architecture / sequences](docs/DIAGRAMS.md) | กระบวนการและ data flows; source `.mmd` ใน docs/diagrams |
-| [Database design](docs/DATABASE.md) | 4 ตาราง, ทุก column/type/PK/FK/default/index และ migrations 001–006 |
+| [Database design](docs/DATABASE.md) | 9 ตาราง, ทุก column/type/PK/FK/default/index และ migrations 001–007 |
 | [API reference](docs/API.md) | ทุก endpoint จริง, access/CSRF, validation และ response contract |
 | [Testing](docs/TESTING.md) / [Render](docs/RENDER.md) | แยก local checks, online checks และสิ่งที่ยังไม่ได้ยืนยัน |
 | [Presentation](docs/PRESENTATION.md) | ลำดับ demo และเหตุผลการออกแบบ |
@@ -54,6 +54,69 @@ GitHub Actions workflow จะรัน typecheck/build/integration tests ด้
 - Validation ที่ server, parameterized SQL, Helmet headers, rate limit การสร้าง 30 ครั้ง/นาที/IP และไม่เก็บ IP หรือ User-Agent
 
 **ขอบเขต:** Login จำเป็นสำหรับสร้างลิงก์และ My links ประวัติ คำค้น สถิติ และ CSV แสดงเฉพาะเจ้าของที่ backend ตรวจสิทธิ์ Short URL/Preview/QR ยังเปิดสาธารณะได้ ผู้มี code ดู title, URL เต็ม และ expiry ผ่าน Preview ได้ จึงอย่าใส่ URL ที่มี token/secret ลิงก์เก่า owner_id=NULL ยังเปิด/สแกนได้แต่ไม่ปรากฏใน My links หรืออ้างสิทธิ์โดยบัญชีใหม่ จำนวนเปิดคือทุก successful GET รวม repeat visits และ bot ไม่ใช่จำนวนคนที่ไม่ซ้ำ HEAD/QR preview/disabled/expired/missing link ไม่นับเป็นการเปิด
+
+## Clone แล้วรัน: เลือกวิธีให้ตรงฐานข้อมูล
+
+Prerequisites: Git, Node.js22+ และ npm. Docker Desktop จำเป็นเฉพาะวิธี Docker; ถ้า DATABASE_URL ชี้ Supabase/PostgreSQL ที่เปิดอยู่ ใช้ npm ได้โดยไม่เปิด Docker.
+
+### วิธี A — npm + PostgreSQL หรือ Supabase ที่มีอยู่ (แนะนำสำหรับ development)
+
+รัน PowerShell:
+
+```powershell
+git clone https://github.com/nicky-wrc/short-url-system.git
+cd short-url-system
+npm ci
+Copy-Item backend/.env.example backend/.env
+```
+
+เปิด backend/.env ใน editor และตั้ง DATABASE_URL ของตัวเอง ห้ามใช้ credentials ของผู้พัฒนา. ถ้าเป็น PostgreSQL local ต้องสร้าง role/database ก่อนตาม SQL ด้านล่าง; ถ้าเป็น Supabase ใช้ Session pooler URI5432 ตั้ง DATABASE_SSL=true และ CA ตาม docs/RENDER.md. ค่า PUBLIC_BASE_URL=http://localhost:3000, PORT=3000, AUTH_ORIGIN=http://localhost:5173 ใช้ local defaults เดิม. ไม่ต้องสร้าง frontend/.env เมื่อใช้ Vite proxy ปกติ.
+
+```powershell
+node scripts/configure-session-secret.mjs
+npm run db:migrate
+npm run dev
+```
+
+เปิด **http://localhost:5173** แล้ว Create account ของตัวเอง. Backend/Short URL ใช้ **http://localhost:3000**; readiness http://localhost:3000/api/health. npm run dev รัน backend และรอ health ก่อนเริ่ม frontendใน terminalเดียว. Stop ด้วย Ctrl+C. หลังเปิดคอมใหม่ หากฐานข้อมูลพร้อมและ env เดิมอยู่ รัน npm run dev ได้เลย. ถ้าพอร์ต5173ถูกใช้ Viteอาจเลือกพอร์ตอื่น ต้องตั้ง AUTH_ORIGIN ให้ตรง origin ที่ใช้งานและ restart backend.
+
+npm run db:migrate เพิ่ม schema001–007 แบบ additive ไม่ reset ข้อมูล; Render startup ก็ migrateก่อนรับrequest; local npm run dev ต้องรัน db:migrate เองเมื่อเปลี่ยน schema. ถ้า migration/health error ตรวจฐานข้อมูลและTLS ก่อนเปิดUI.
+
+### วิธี B — Docker Compose รันทั้งระบบ
+
+ต้องเปิด Docker Desktop:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+ตั้ง POSTGRES_PASSWORD ใน root .env ด้วยรหัสส่วนตัวที่ใช้ใน URI ได้ (เช่น hex) แล้ว:
+
+```powershell
+node scripts/configure-session-secret.mjs --compose
+docker compose up --build -d
+```
+
+เปิด **http://localhost:3000** (UI/API/redirectบริการเดียว). ข้อมูลอยู่ใน postgres-data volume. ครั้งถัดไปใช้ docker compose up -d; Stop ใช้ docker compose stop. ไม่ใช้ down -v เพราะลบข้อมูล. อย่ารัน npm backend บน3000ซ้อนกับ Compose.
+
+### Checks และฐานข้อมูลทดสอบ
+
+```powershell
+npm run typecheck
+npm run build
+```
+
+npm test **ล้างข้อมูล test DB**: สร้าง PostgreSQL local แยกชื่อท้าย _test แล้วตั้ง TEST_DATABASE_URL ให้ตรง และ TEST_DATABASE_RESET=true ใน backend/.env เท่านั้น. ห้ามชี้ production/Supabase; test guard ยอมรับ loopbackและชื่อท้าย_testเท่านั้น. Test runner เปลี่ยน DATABASE_URL เป็น test DBและปิด OpenAI keyภายในprocess. ไม่จำเป็นต้องตั้งTEST_DATABASE_RESET=trueเพื่อรันdev.
+
+```powershell
+npm test
+```
+
+Production local: npm run build แล้ว npm start; ตั้ง AUTH_ORIGIN=http://localhost:3000 ให้ตรงหน้าUI. การ Deploy Render ใช้ docs/RENDER.md; secrets localไม่ถูกส่งขึ้นRenderผ่านGit. ฟีเจอร์AIต้องมี keyฝั่งbackendและเครดิตAPI; appเดิมใช้ได้เมื่อไม่มีkey.
+
+### Persistence ที่เพิ่ม
+
+ฐานข้อมูลปัจจุบันมี9ตารางหลังmigration007: 4ตารางหลัก + chat_conversations/chat_messages, qr_codes, csv_exports, preview_events. แชตสำเร็จอ่านต่อ/ลบเฉพาะเจ้าของ; QRเก็บPNGcacheตามShortURL; CSVเก็บข้อมูลการส่งออกไม่เก็บไฟล์; Previewเก็บmetadataGETและสถานะไม่เก็บIP. ทั้งหมดไม่เพิ่ม click_events. ไม่มีประวัติย้อนหลังของกิจกรรมก่อนmigration; ยังไม่มีautomatic retentionสำหรับaudit/cache. Schemaใหม่ยังไม่อยู่บนRenderจนกว่าจะpushและdeploy.
 
 ## เริ่มต้นในเครื่อง
 
@@ -187,7 +250,7 @@ Private: POST links, GET links/search, GET stats, GET CSV และ GET links/:c
 
 หลัง migration บนฐานข้อมูลที่ได้รับอนุญาต รัน `npm run demo:users` สร้าง `demo-a@linkstudio.example` และ `demo-b@linkstudio.example` ด้วยรหัสสุ่ม บันทึกรหัสจริงเฉพาะ `tmp/demo-accounts-<timestamp>.txt` ที่ gitignore ไม่พิมพ์รหัสใน console ไม่เปลี่ยนรหัสบัญชีเดิม ส่ง credentials ให้ผู้ตรวจผ่านช่องทางส่วนตัวเมื่อพร้อม ไม่มีรหัส demo จริงใน Git
 
-บัญชี demo ที่มีหลักฐานก่อนหน้าอยู่ใน local QA เท่านั้น ไม่ยืนยันว่ามีบัญชี demo บน production. Render startup รัน migrations 001–006 สำเร็จเมื่อ 2026-10-04; ยังไม่ได้ตรวจ Login และ demo credentials จริงบนเว็บออนไลน์ ไม่บันทึกรหัสผ่านผู้ตรวจใน repository
+บัญชี demo ที่มีหลักฐานก่อนหน้าอยู่ใน local QA เท่านั้น ไม่ยืนยันว่ามีบัญชี demo บน production. Render startup รัน migrations 001–007 สำเร็จเมื่อ 2026-10-04; ยังไม่ได้ตรวจ Login และ demo credentials จริงบนเว็บออนไลน์ ไม่บันทึกรหัสผ่านผู้ตรวจใน repository
 
 ### ดาวน์โหลดประวัติ CSV
 
@@ -364,7 +427,7 @@ A shared `frontend/src/components/ui/morph-loading.tsx` adapts the supplied four
 
 `GET /api/tags` ต้อง Login และคืนเฉพาะ Tags ที่ใช้ในลิงก์ของเจ้าของ อ่าน contract, validation และผลตรวจที่ [Tags documentation](docs/TAGS.md)
 
-รัน `npm run db:migrate` ก่อนเริ่ม backend ที่อัปเดต: migration `006_link_tags.sql` เพิ่ม `links.tags` เป็น `text[] NOT NULL DEFAULT '{}'` และ GIN index โดยคงข้อมูล/เจ้าของเดิม ยังมี 4 ตาราง รันซ้ำได้ ลิงก์เก่าเริ่มต้นไม่มี Tags
+รัน `npm run db:migrate` ก่อนเริ่ม backend ที่อัปเดต: migration `006_link_tags.sql` เพิ่ม `links.tags` เป็น `text[] NOT NULL DEFAULT '{}'` และ GIN index โดยคงข้อมูล/เจ้าของเดิม migration 006 เดิมมี 4 ตาราง; ปัจจุบัน migration 007 เพิ่มเป็น 9 ตาราง รันซ้ำได้ ลิงก์เก่าเริ่มต้นไม่มี Tags
 ## Render deployment
 
 Deploy one Free Node web service with the existing Supabase database using render.yaml. Read [step-by-step Render setup](docs/RENDER.md). Secrets stay in Render Environment; HTTPS origin is supplied automatically by Render through scripts/start-render.mjs. [Live application](https://synerry-link-studio.onrender.com) was verified on 2026-10-04 for build/startup, hosted migration, database health, production cookie flags and Login UI. Authenticated end-to-end flows and physical QR scanning remain unverified online.

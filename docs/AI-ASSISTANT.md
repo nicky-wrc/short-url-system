@@ -27,7 +27,7 @@ OPENAI_MODEL=gpt-5-mini
 - Backend เรียก HTTPS `https://api.openai.com/v1/responses` ด้วย key ฝั่ง server ตาม [Responses/text guide](https://developers.openai.com/api/docs/guides/text); browser ไม่เรียก OpenAI โดยตรง
 - ส่งคำถามและประวัติคู่บทสนทนาที่สำเร็จล่าสุด สูงสุด 7 ข้อความรวมคำถามปัจจุบัน, สูงสุด 4,000 characters; คำถาม/ข้อความละ 1,000 characters มีคู่มือผลิตภัณฑ์เป็น instructions ฝั่ง server
 - ค่าเริ่มต้นไม่ส่งข้อมูลบัญชี เมื่อ opt-in backend ใช้ session owner อ่านเฉพาะยอดรวม own links, active links, recorded opens และ opens today (UTC) พร้อมเวลาของ snapshot ไม่มี email, รูป, ชื่อหรือ URL ของลิงก์ และไม่มีสิทธิ์อ่านข้อมูลของผู้อื่น
-- แชตอยู่ใน React memory; refresh/logout จะล้าง ไม่มีตารางบทสนทนา ไม่เก็บ prompt/provider error ใน application logs และไม่เก็บประวัติใน localStorage
+- แชตสำเร็จเก็บใน PostgreSQL chat_conversations/chat_messages แบบ private; refresh/login ใหม่เปิดบทสนทนาเดิมได้และลบได้ ไม่เก็บ prompt/provider error ใน application logs และไม่เก็บประวัติใน localStorage
 - API ใช้ `store:false` เพื่อลด application state ที่ provider เก็บ แต่ไม่ได้เป็นคำรับรองว่า provider ไม่มี retention ใด ๆ ดู [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data)
 - คำตอบเป็น plain text ใน React ไม่ render HTML/Markdown links; AI อาจผิด ไม่ใช่การตรวจ phishing ไม่ให้กรอก passwords/secrets และไม่มีการทำงานอัตโนมัติหรืออ้างว่าดำเนินการสำเร็จ
 
@@ -41,7 +41,7 @@ OPENAI_MODEL=gpt-5-mini
 {"messages":[{"role":"user","content":"CSV ดาวน์โหลดอย่างไร?"}],"includeStats":false}
 ```
 
-Body strict: รับ `user`/`assistant` เริ่มและจบด้วย user, สลับ role, สูงสุด 8 ข้อความ (ดังนั้นจำนวนที่ valid สูงสุด 7); ไม่รับ system role, ownerId, URL ของ provider, tools หรือ model จาก client Success: `{ "reply": "...", "provider": "OpenAI" }`; ถ้า opt-in เพิ่ม `summary` ที่อ่านจาก PostgreSQL แบบ parameterized โดยใช้ session owner เสมอ
+Body strict: รับ `user`/`assistant` เริ่มและจบด้วย user, สลับ role, สูงสุด 8 ข้อความ (ดังนั้นจำนวนที่ valid สูงสุด 7); ไม่รับ system role, ownerId, URL ของ provider, tools หรือ model จาก client Success: `{ "reply": "...", "provider": "OpenAI", "conversationId": "123" }`; ถ้า opt-in เพิ่ม `summary` ที่อ่านจาก PostgreSQL แบบ parameterized โดยใช้ session owner เสมอ
 
 Errors: 400 invalid conversation, 401 unauthenticated/expired, 403 CSRF/origin, 429 rate/concurrency limit, 503 not configured/provider quota, 502 sanitized provider/network/empty/incomplete reply, 504 timeout ทุกครั้งที่ผ่าน app มี `Cache-Control: no-store` และ request limit 16 KiB เดิม
 
@@ -64,3 +64,16 @@ Regression tests ใช้ PostgreSQL disposable loopback `_test` พร้อ�
 ### หน้าตาแชตแบบกระชับ
 
 ช่องพิมพ์เริ่มเป็น capsule และขยายเมื่อมีข้อความ ปุ่มคำถามแนะนำ “ใช้ QR”, “ตั้งชื่อลิงก์”, “การนับคลิก” เติมคำถามเต็มให้แก้ก่อนส่ง ไม่ส่งอัตโนมัติ รายละเอียดความสามารถ/ข้อมูลที่ส่งไป OpenAI และปุ่มลัด workspace อยู่ใต้ปุ่ม ⓘ การเลือก “ส่งสถิติให้ OpenAI” ยังเป็น opt-in และเปลี่ยนตัวเลือกจะเริ่มแชตใหม่ ปุ่มเริ่มแชตใหม่อยู่บน header; Enter ส่ง / Shift+Enter ขึ้นบรรทัดใหม่ ข้อจำกัด provider quota หรือ Billing ไม่ได้ถูกแก้ด้วยการเปลี่ยน UI
+
+## ประวัติแชตที่บันทึกจริง (migration 007)
+
+เปิดรายการแชตด้านบนเพื่ออ่านและถามต่อ หรือเริ่มแชตใหม่ ปุ่มลบต้องยืนยันและลบข้อความลูกด้วย CASCADE เฉพาะเจ้าของ รายการแสดง 100 บทสนทนาล่าสุด เรียง updated_at DESC,id DESC; แต่ละบทสนทนาสูงสุด 100 คำถาม/200 ข้อความ ไม่ลบแชตเก่าอัตโนมัติ เปลี่ยนตัวเลือกส่งสถิติเริ่มบทสนทนาใหม่แต่ไม่ลบของเก่า
+
+GET /api/assistant/conversations คืน {conversations:[{id,title,created_at,updated_at}]}.
+GET /api/assistant/conversations/:id คืน {messages:[{role,content}]} เรียง id ASC; ใช้ session owner; foreign/missing=404.
+DELETE /api/assistant/conversations/:id ต้อง session + CSRF; success {deleted:true}.
+POST /api/assistant/chat รับ conversationId เป็น decimal string เพิ่มจาก contract เดิม; รับคำถามสุดท้ายจาก messages เท่านั้น ประวัติที่ส่งให้ AI อ่านจาก DB โดยตรวจ owner ไม่เชื่อ assistant history จาก browser. ไม่ส่ง conversationId = เริ่มใหม่ (ยังรับ body เดิมได้). Provider สำเร็จจึงบันทึกคู่ใน transaction เดียว; failure ไม่บันทึก orphan turn. ข้อความล่าสุด 6 จาก DB ถูกตัดข้อความละ1000 และตัดเป็นคู่เพื่อรวมคำถามแล้ว<=4000 ก่อนส่ง OpenAI. คำตอบเต็มใน DB สูงสุด12000.
+
+ผู้ใช้ต้องไม่ส่งรหัสผ่าน/API key ระบบไม่ได้ตรวจหรือ redact secrets ทุกข้อความ หลีกเลี่ยงข้อมูลลับทั้งหมด ไม่เก็บ prompt/error ใน logs แต่ข้อความที่ส่งเองจะเก็บในบัญชีและส่ง provider ตาม flow. store:false เป็นตัวเลือก OpenAI แยกจากฐานข้อมูลแชตของ Link Studio.
+
+conversation.include_stats เก็บ consent ต่อบทสนทนา; อ่านแชตคืนincludeStatsและUIคืน checkboxให้ตรง. POSTที่consentไม่ตรงตอบ400ก่อนเรียกprovider ให้เริ่มใหม่เพื่อไม่ส่งคำตอบเก่าที่มีสถิติหลังยกเลิกconsent.

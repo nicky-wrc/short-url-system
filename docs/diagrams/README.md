@@ -5,7 +5,7 @@
 | File stem | ใช้สำหรับ |
 |---|---|
 | context | ขอบเขตระบบ / external entities |
-| dfd-level-0 | ทั้ง 9 business processes และ 4 stores |
+| dfd-level-0 | ทั้ง 9 business processes และ 9 stores |
 | dfd-account-links | มุมมอง process 1.0–3.0 สำหรับนำเสนอ |
 | dfd-public-links | มุมมอง process 4.0–6.0 สำหรับนำเสนอ |
 | dfd-reports-ai | มุมมอง process 7.0–9.0 สำหรับนำเสนอ |

@@ -14,7 +14,7 @@ Review and push application changes together with the deployment files before co
 2. New → Blueprint → connect `nicky-wrc/short-url-system`, branch `main`, root `render.yaml`.
 3. Review the single web service, Node runtime, Singapore region and **Free** plan. Do not select a paid plan or create a new PostgreSQL database.
 4. Supply DATABASE_URL privately from Supabase Connect → Session pooler, port 5432, database postgres, using the newly rotated database password with percent-encoding when needed. Do not add URL SSL query parameters; this app configures verified TLS through DATABASE_SSL and its public CA file.
-5. Review and deploy. The start script derives PUBLIC_BASE_URL and AUTH_ORIGIN from RENDER_EXTERNAL_URL, runs additive migrations 001–006, then starts Express on Render's PORT/0.0.0.0. Existing rows are preserved. Free services do not require a paid pre-deploy command.
+5. Review and deploy. The start script derives PUBLIC_BASE_URL and AUTH_ORIGIN from RENDER_EXTERNAL_URL, runs additive migrations 001–007, then starts Express on Render's PORT/0.0.0.0. Existing rows are preserved. Free services do not require a paid pre-deploy command.
 6. After Live, optionally add a fresh server-only OPENAI_API_KEY under Environment and redeploy. Provider API billing is separate from Render's Free plan.
 
 ## Manual Web Service equivalent
