@@ -1,0 +1,130 @@
+@startuml
+title Link Studio - ER Diagram (9 tables / 49 columns)
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam linetype ortho
+skinparam nodesep 45
+skinparam ranksep 65
+skinparam classBackgroundColor #EDF4E8
+skinparam classBorderColor #70816C
+skinparam ArrowColor #596B59
+hide circle
+hide methods
+
+entity "users" as users {
+  * id : bigint <<PK, identity>>
+  --
+  * email : varchar(254) <<UK>>
+  * password_hash : text
+  * created_at : timestamptz = NOW()
+  * display_name : varchar(80) = ''
+  avatar_image : bytea
+  avatar_version : uuid
+}
+entity "sessions" as sessions {
+  * sid : varchar <<PK>>
+  --
+  * sess : json
+  * expire : timestamp(6) without time zone
+}
+entity "links" as links {
+  * id : bigint <<PK, identity>>
+  --
+  * code : varchar(32) <<UK>>
+  * original_url : text
+  * title : varchar(120) = ''
+  * created_at : timestamptz = NOW()
+  expires_at : timestamptz
+  owner_id : bigint <<FK>>
+  * is_active : boolean = true
+  * tags : text[] = '{}'
+}
+entity "click_events" as click_events {
+  * id : bigint <<PK, identity>>
+  --
+  * link_id : bigint <<FK>>
+  * opened_at : timestamptz = NOW()
+}
+entity "chat_conversations" as chat_conversations {
+  * id : bigint <<PK, identity>>
+  --
+  * owner_id : bigint <<FK>>
+  * title : varchar(80)
+  * include_stats : boolean = false
+  * created_at : timestamptz = NOW()
+  * updated_at : timestamptz = NOW()
+}
+entity "chat_messages" as chat_messages {
+  * id : bigint <<PK, identity>>
+  --
+  * conversation_id : bigint <<FK>>
+  * role : varchar(9)
+  * content : text
+  * created_at : timestamptz = NOW()
+}
+entity "qr_codes" as qr_codes {
+  * id : bigint <<PK, identity>>
+  --
+  * link_id : bigint <<FK>>
+  * payload : text
+  * png : bytea
+  * created_at : timestamptz = NOW()
+}
+entity "csv_exports" as csv_exports {
+  * id : bigint <<PK, identity>>
+  --
+  * owner_id : bigint <<FK>>
+  * search : varchar(120) = ''
+  tag : varchar(32)
+  * row_count : integer
+  * filename : varchar(64)
+  * created_at : timestamptz = NOW()
+}
+entity "preview_events" as preview_events {
+  * id : bigint <<PK, identity>>
+  --
+  * link_id : bigint <<FK>>
+  * status : varchar(8)
+  * viewed_at : timestamptz = NOW()
+}
+
+users |o--o{ links : owns (nullable legacy owner)
+links ||--o{ click_events : records
+users ||--o{ chat_conversations : owns
+chat_conversations ||--o{ chat_messages : contains
+links ||--o{ qr_codes : caches
+users ||--o{ csv_exports : exports
+links ||--o{ preview_events : viewed
+
+note right of sessions
+  sess.passport.user is a logical user reference in JSON.
+  There is no relational FK from sessions to users.
+  Anonymous bootstrap sessions can also exist.
+end note
+note bottom of links
+  owner_id: ON DELETE SET NULL; all other FKs: CASCADE.
+  code: 4-32 letters/digits/_/-; generated codes use 8 characters.
+  original_url length: 1-2048; HTTP/HTTPS validated by API.
+  Tags are private; NULL expiry means no expiry.
+end note
+note bottom of qr_codes
+  UNIQUE(link_id, payload).
+  PNG cache contains the public Short URL, not destination URL.
+end note
+note bottom of chat_messages
+  role IN ('user', 'assistant'); content length 1-12000.
+end note
+note bottom of users
+  avatar_image and avatar_version must both be NULL or both set.
+  Normalized WebP image size <= 262144 bytes.
+end note
+note bottom of csv_exports
+  row_count BETWEEN 0 AND 10000; file contents are not stored.
+end note
+note bottom of preview_events
+  status IN ('active', 'disabled', 'expired').
+  Preview views are separate from redirect opens.
+end note
+@enduml

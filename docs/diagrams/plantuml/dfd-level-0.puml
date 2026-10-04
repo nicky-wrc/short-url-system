@@ -1,0 +1,102 @@
+@startuml
+title Link Studio - DFD Level 0
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam ArrowColor #596B59
+skinparam nodesep 55
+skinparam ranksep 65
+skinparam ArrowFontSize 11
+skinparam rectangleBackgroundColor #EDF4E8
+skinparam rectangleBorderColor #70816C
+skinparam usecaseBackgroundColor #F3F7EE
+skinparam usecaseBorderColor #70816C
+skinparam databaseBackgroundColor #EDF4E8
+skinparam databaseBorderColor #70816C
+
+top to bottom direction
+rectangle "Member / reviewer" as U
+rectangle "Link recipient / QR scanner" as V
+rectangle "OpenAI Responses API\n(optional external provider)" as AI
+usecase "1.0\nAuthentication\nand Profile" as P1
+usecase "2.0\nCreate\nShort URL" as P2
+usecase "3.0\nEdit / status\nand private Tags" as P3
+usecase "4.0\nPreview\ndestination" as P4
+usecase "5.0\nResolve / count\nand redirect" as P5
+usecase "6.0\nGenerate /\ndownload QR" as P6
+usecase "7.0\nHistory / search\nand Analytics" as P7
+usecase "8.0\nExport\nowned CSV" as P8
+usecase "9.0\nAI assistance" as P9
+database "D1: users" as D1
+database "D2: sessions" as D2
+database "D3: links" as D3
+database "D4: click_events" as D4
+database "D5: chat_conversations" as D5
+database "D6: chat_messages" as D6
+database "D7: qr_codes" as D7
+database "D8: csv_exports" as D8
+database "D9: preview_events" as D9
+U --> P1 : register/login/logout,\nname/photo/password, cookie + CSRF
+D1 --> P1 : password hash / profile
+P1 --> D1 : new account / updated name, normalized\nphoto, password hash
+D2 --> P1 : session / absolute expiry / CSRF state
+P1 --> D2 : new/rotated/revoked sessions
+P1 --> U : user, cookie, CSRF token / auth error
+P1 --> P2 : verified session owner + write protection
+P1 --> P3 : verified session owner + write protection
+P1 --> P7 : verified session owner
+P1 --> P8 : verified session owner
+P1 --> P9 : verified session owner + write protection
+U --> P2 : HTTP/HTTPS URL, title, alias, Tags, expiry\nchoice
+P2 --> D3 : validated code/destination/owner/UTC\nexpiry/private Tags
+D3 --> P2 : unique code conflict / stored link
+P2 --> U : Short URL / input or conflict error
+U --> P3 : code + title/originalUrl/Tags OR explicit\nisActive
+D3 --> P3 : owned link / existing attributes
+P3 --> D3 : owner-filtered metadata or status update
+P3 --> U : saved Link / validation or not-found error
+V --> P4 : Preview code / refresh / status recheck
+D3 --> P4 : title, stored URL, expiry, is_active no\nprivate Tags
+P4 --> V : hostname/full URL/status / missing no\nclick event
+V --> P5 : GET or HEAD code from Short URL, QR or\nContinue
+D3 --> P5 : latest destination / availability under\nrow lock
+P5 --> D4 : link_id + database time qualifying GET\nonly
+P5 --> V : 302 Location after commit / 404 / 410 /\nsafe failure
+U --> P6 : existing link code / download choice
+V --> P6 : existing link code / download choice
+D3 --> P6 : existing code
+P6 --> U : PNG encoding public Short URL no click\nevent
+P6 --> V : PNG encoding public Short URL no click\nevent
+U --> P7 : q, single Tag, page / owned totals request
+D3 --> P7 : owned history, private Tags, active/total\nlink counts
+D4 --> P7 : owned event counts / UTC daily totals
+P7 --> U : My links / tag choices / UTC statistics
+U --> P8 : q + single Tag all matching pages
+D3 --> P8 : owned matching rows / status / UTC dates
+D4 --> P8 : matching link event counts
+P8 --> U : UTF-8 BOM CSV / validation or >10000 error\nno click event
+U --> P9 : question / recent conversation / optional\nstats consent
+D3 --> P9 : own aggregate link totals only when opted\nin
+D4 --> P9 : own aggregate opens only when opted in
+P9 --> AI : guide + conversation + optional aggregate\nstore:false
+AI --> P9 : plain-text answer / failure
+P9 --> U : answer / sanitized error saved chat / no\nlink mutation or click events
+P6 --> D7 : Short URL payload + PNG cache
+D7 --> P6 : cached PNG for current public base URL
+P4 --> D9 : successful metadata GET + status no IP
+P8 --> D8 : owner + filters + filename + row count
+P9 --> D6 : successful question-answer pair / delete\nowned chat
+D6 --> P9 : owned stored recent messages
+P9 --> D5 : new conversation / updated time / delete\nowned chat
+D5 --> P9 : own recent conversations / verified\nownership
+note bottom of P5
+Only committed successful GET redirects count as opens.
+HEAD, Preview, QR, CSV and AI do not add click events.
+Missing = 404; disabled/expired = 410.
+end note
+note bottom of P9
+Owner-scoped saved chats; aggregate sharing is opt-in.
+AI offers advice; it does not mutate links.
+end note
+@enduml

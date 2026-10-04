@@ -1,0 +1,65 @@
+@startuml
+title Link Studio - Architecture (Modular Monolith)
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam ArrowColor #596B59
+skinparam nodesep 45
+skinparam ranksep 55
+skinparam rectangleBackgroundColor #EDF4E8
+skinparam rectangleBorderColor #70816C
+skinparam circleBackgroundColor #F3F7EE
+skinparam circleBorderColor #70816C
+skinparam databaseBackgroundColor #EDF4E8
+skinparam databaseBorderColor #70816C
+
+top to bottom direction
+node "Browser / mobile device" as Client {
+  component "React 19 + TypeScript\nVite frontend\nEN/Thai, Dark/Light, kinetic navigation" as Web
+  storage "localStorage\nlanguage / theme" as Prefs
+}
+node "Render Free - one Node.js 22 Web Service" as Render {
+  component "HTTPS reverse proxy" as Proxy
+  component "Express 5 + TypeScript" as Express
+  artifact "Vite production build\nHTML / JS / CSS" as Static
+  component "Passport Local / bcrypt\nPostgreSQL sessions / CSRF" as Auth
+  component "Owner APIs\nCreate / edit / status / Tags\nHistory / Analytics / CSV / Profile" as Owner
+  component "Public Preview / QR\nNo destination fetching" as Public
+  component "Public redirect\nRow lock / status check\nEvent transaction / 302" as Redirect
+  component "AI assistant\nAuthenticated bounded requests\nOwned chat history" as Assistant
+  component "start-render.mjs\nDerive origin / additive migrations / start" as Start
+}
+database "Supabase PostgreSQL\n9 application tables" as DB
+cloud "OpenAI Responses API\nOptional server-only API key" as OpenAI
+node "Destination website" as Target
+
+Web <--> Prefs : Local preferences; same-origin tabs
+Web <--> Proxy : HTTPS; same origin
+Proxy --> Express : Route requests
+Start --> DB : Apply migrations 001-007
+Start --> Express : Start service
+Express --> Static : Serve build
+Static --> Web : HTML / JS / CSS
+Express --> Auth : Authentication / session validation
+Express --> Owner : Private endpoints
+Express --> Public : Public metadata / QR
+Express --> Redirect : GET / HEAD short code
+Express --> Assistant : Assistant endpoints
+Auth <--> DB : users / sessions; verified TLS
+Auth --> Owner : Session owner / CSRF for writes
+Auth --> Assistant : Session owner / CSRF
+Owner <--> DB : Parameterized SQL / ownership checks
+Public <--> DB : Read links / QR cache; write Preview events
+Redirect <--> DB : Lock link / insert event / commit
+Assistant <--> DB : Owned conversations / messages; opt-in aggregates
+Assistant <--> OpenAI : HTTPS; guide / conversation / opt-in aggregates; store:false
+Redirect --> Web : 302 Location after successful commit
+Web --> Target : Follow Location; preserve query / fragment
+
+note bottom of Render
+  These components are modules in one application service.
+  They are not independently deployed microservices.
+  Credentials remain on the backend.
+end note
+@enduml
