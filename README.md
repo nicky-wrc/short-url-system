@@ -4,7 +4,9 @@
 
 **Stack:** React 19 + TypeScript + Vite / Node.js 22 + Express 5 + TypeScript / PostgreSQL 17
 
-**Dark / Light Mode:** สลับได้จาก sidebar บน desktop หรือไอคอนดวงจันทร์/ดวงอาทิตย์ใน header บนมือถือ รวมถึง Login/Register และ Preview ค่าเริ่มต้นเป็น Dark Mode และจดจำใน browser เดิมด้วย `localStorage` (`linkstudio.theme`) แท็บใน origin เดียวกันเปลี่ยนตามกัน ไม่ผูกกับบัญชีและไม่ซิงก์ข้ามอุปกรณ์ หาก browser ปิดการเข้าถึง storage ยังสลับได้จน refresh ปุ่ม primary ใช้เขียวอ่อนเดิมทั้งสองโหมด ส่วนสีข้อความ/focus ปรับให้เหมาะกับพื้นหลัง ตรวจ regression ได้ด้วย `npm run test:theme` (รวมใน `npm test`)
+**Dark / Light Mode:** สลับได้จากสวิตช์ทรงแคปซูลพระจันทร์/ดวงอาทิตย์ที่มุมขวาบน ทั้ง desktop, มือถือ, Login/Register และ Preview ค่าเริ่มต้นเป็น Dark Mode และจดจำใน browser เดิมด้วย `localStorage` (`linkstudio.theme`) แท็บใน origin เดียวกันเปลี่ยนตามกัน ไม่ผูกกับบัญชีและไม่ซิงก์ข้ามอุปกรณ์ หาก browser ปิดการเข้าถึง storage ยังสลับได้จน refresh ปุ่ม primary ใช้เขียวอ่อนเดิมทั้งสองโหมด ส่วนสีข้อความ/focus ปรับให้เหมาะกับพื้นหลัง ตรวจ regression ได้ด้วย `npm run test:theme` (รวมใน `npm test`)
+
+**ภาษาไทย / English:** เลือกภาษาได้ที่มุมขวาบนคู่กับสวิตช์ธีม ทั้งหน้าทำงาน Login/Register และ Preview ค่าเริ่มต้นเป็น English และจำด้วย `localStorage` (`linkstudio.language`) ใน browser/origin เดิม แท็บใน origin เดียวกันเปลี่ยนตามกัน สลับภาษาได้โดยไม่ล้างฟอร์มหรือออกจากระบบ ชื่อผู้ใช้ ชื่อลิงก์ URL แท็ก และข้อความแชทคงตามที่ผู้ใช้กรอก ปุ่มคำถามแนะนำ AI ใช้ภาษาที่เลือก แต่ไม่ได้แปลประวัติแชทหรือกำหนดภาษาคำตอบของโมเดล ไฟล์ CSV และ API ใช้รูปแบบเดิม ภาษาไทยใช้ Noto Sans Thai แบบ self-hosted (SIL OFL) ตรวจด้วย `npm run test:i18n` (รวมใน `npm test`)
 
 Login/Register ใช้ข้อความแนะนำแบบ CharacterV1 ที่ปรับให้เคลื่อนที่เบา รองรับภาษาไทยและ reduced motion โดยเลือก scroll/entrance ตามระยะเลื่อนจริง ดู [รายละเอียดและผลตรวจ](docs/TEXT-ANIMATION.md)
 
