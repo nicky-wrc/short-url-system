@@ -208,3 +208,7 @@ Mermaid10images rendered in browser successfully and re-exportedSVG; ERincludes9
 ## Reviewer environment provisioning — 2026-10-04
 
 Typecheck, backendbuild and npmtest passed (55backend +3readiness=58). Additionaltest validatesenv email/name/password, bcrypt persistence, and duplicateemail preservingexistinghash/profile. Test DB guardedlocalonly. Separateexplicitprovisioningcreatedoneordinaryrevieweraccountintheapplicationdatabase; liveHTTPSauthsession/login/displayName/logout204 verified viaAPI withoutprintingcredentials. No linkdatareset, noAIproviderrequest. Email/name/passwordvaluesarenotcommitted; backend/.envisignored. Prior no-production-change claims refer tothe earlieractivitytask, notthisauthorizedaccountcreation.
+
+## Language menu / docs verification (2026-10-04)
+
+The theme-aware language control and latest navigation are described in SYSTEM.md; actual browser QA and limitations are recorded in UI-VERIFICATION.md. Frontend/backend typecheck and production build passed;13 language/theme/dev-readiness tests passed. Backend integration tests were not rerun for this frontend/docs-only change. Documentation audit matched9 tables/49 columns to ER and7 main Mermaid sources to Markdown;10 diagrams rendered in browser. Source checks do not establish current production schema. Local isolated QA only; no deployment or real AI call in this round.

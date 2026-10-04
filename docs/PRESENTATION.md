@@ -25,6 +25,8 @@ Expiry boundary ใช้ผล automated tests ที่ควบคุมเ�
 
 ## 3. ออกแบบระบบและฐานข้อมูล (4–5 นาที)
 
+UI ปัจจุบัน: เปิด Menu จากแถบไอคอนซ้ายหรือปุ่มข้างโลโก้มือถือ แสดงเมนูจริงทั้งห้าหน้า ลองเปลี่ยน English/ไทย และ Dark/Light Mode ที่มุมขวาบน เมนูภาษาใช้สีตามธีมทั้งรายการและ checked state; สลับภาษาไม่ล้างฟอร์ม ค่าภาษา/ธีมอยู่ใน browser ไม่ใช่ account preference ใน PostgreSQL และไม่ sync ข้ามอุปกรณ์
+
 เปิด DIAGRAMS.md และ DATABASE.md:
 
 - Context แสดงสมาชิก/ผู้รับ/OpenAI; backend ไม่เรียกเว็บไซต์ปลายทาง

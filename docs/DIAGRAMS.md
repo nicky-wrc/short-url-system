@@ -8,6 +8,8 @@ Mermaid ด้านล่างเปิดดูได้บน GitHub; source
 
 ## Context diagram
 
+การตรวจล่าสุดรวม UI สองภาษา, Dark/Light Mode และ Sterling Gate navigation: ไม่มี process/store ใน backend เพิ่มจากงานนี้ ค่า preference อ่าน/เขียนใน browser ตาม Architecture ส่วน DFD ยังคง 9 business processes / 9 PostgreSQL stores และ ER มี 49 columns จาก migrations 001–007 ไม่สร้างตารางหรือ FK สำหรับค่า preference ที่ไม่ได้เก็บในฐานข้อมูล
+
 แสดงขอบเขตทั้งระบบโดยไม่มี data store บางตำราเรียก context นี้ Level 0 จึงแนบคู่กับ DFD ที่แตก process หลักด้านล่าง
 
 ```mermaid
@@ -220,7 +222,9 @@ Indexes/constraints/nullability/migrations ทั้งหมดอยู่ใ�
 
 ```mermaid
 flowchart TB
-  B["Browser / phone: React19 + TypeScript"]
+  B["Browser / phone: React19 + TypeScript; EN/Thai; Dark/Light; kinetic navigation"]
+  L[("Browser localStorage: language / theme; same-origin tabs")]
+  B <-->|"local preference read / write; memory fallback"| L
   subgraph R["Render Free · one Node22 Web Service"]
     H["HTTPS reverse proxy"]
     E["Express5 + TypeScript"]

@@ -56,6 +56,8 @@ Build Dockerfile ที่ root ตั้ง env ชุดเดียวกั�
 
 ## ข้อจำกัดและการต่อยอด
 
+Frontend ปัจจุบันมีภาษา English/ไทย, Dark/Light และ kinetic navigation การอัปเดตเมนูภาษาใช้ production frontend build ตามขั้นตอนเดิม ไม่เพิ่ม environment variable, API หรือ migration ค่าภาษา/ธีมเป็น localStorage ต่อ origin; localhost และโดเมน Render จึงมี preference แยกกัน ตรวจทั้ง Login/Register, workspace และ public Preview หลัง deploy อย่าใช้ผล local QA เป็นผลทดสอบออนไลน์
+
 - Workspace เป็นส่วนตัว: authentication/ownership มีแล้วใน backend; Short URL/Preview/QR สาธารณะโดยตั้งใจ ต้องเพิ่ม abuse controls และทบทวนสิทธิ์ก่อนรับ workload ขนาดใหญ่
 - Rate limit อยู่ใน memory ของ service ใช้กับ auth/password/avatar/create/edit/AI แต่ไม่ครอบคลุมทุก read/redirect/status/profile endpoint; หลาย instance ต้องใช้ distributed store
 - จำนวนเปิดรวม repeated GET และ bots ไม่ทำ unique visitor analytics

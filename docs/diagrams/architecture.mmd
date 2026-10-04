@@ -1,5 +1,7 @@
 flowchart TB
-  B["Browser / phone: React19 + TypeScript"]
+  B["Browser / phone: React19 + TypeScript; EN/Thai; Dark/Light; kinetic navigation"]
+  L[("Browser localStorage: language / theme; same-origin tabs")]
+  B <-->|"local preference read / write; memory fallback"| L
   subgraph R["Render Free · one Node22 Web Service"]
     H["HTTPS reverse proxy"]
     E["Express5 + TypeScript"]

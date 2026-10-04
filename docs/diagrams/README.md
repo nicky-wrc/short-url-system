@@ -1,6 +1,6 @@
 # Diagram artifacts
 
-ชุดปัจจุบันตรวจจาก source/migrations เมื่อ 2026-10-04 มี 10 ภาพในรูป Mermaid source (`.mmd`) และ SVG:
+ชุดปัจจุบันตรวจจาก source/migrations เมื่อ 2026-10-04 มี 10 ภาพในรูป Mermaid source (`.mmd`) และ SVG: รอบ UI ภาษา/Navigation ตรวจ ER ตรงกับทั้ง 9 ตาราง / 49 columns และตรวจ source parity ของ Mermaid หลัก 7 ภาพ Architecture แสดง browser localStorage สำหรับภาษา/ธีมแยกจาก PostgreSQL; DFD business flows และ FK เดิมคงตรงกับ migrations ไม่มี migration ใหม่ Render ทั้ง 10 ภาพอีกครั้งสำเร็จ
 
 | File stem | ใช้สำหรับ |
 |---|---|

@@ -4,6 +4,8 @@ Source of truth: `backend/migrations/001_initial.sql` ถึง `007_activity_hi
 
 มี **9 ตาราง application** ใน public schema: users, sessions, links, click_events, chat_conversations, chat_messages, qr_codes, csv_exports, preview_events; Tags อยู่ใน links และสถิติคลิกคำนวณจาก click_events และไม่มี migration-history table; migrator อ่านไฟล์ 001–007 ทุกครั้งใน transaction เดียว ใช้ advisory transaction lock 735119 และ additive/idempotent DDL
 
+ตรวจ schema ที่ประกาศใน migrations 001–007 รอบ UI ภาษา/Navigation: 9 ตาราง รวม 49 columns ตาม ER เดิม ไม่มี migration ใหม่จากธีม/ภาษา ค่าทั้งสองอยู่ใน browser localStorage ไม่ใช่ column ของ users หรือข้อมูลใน sessions; `sess.passport.user` เป็นความเชื่อมโยงเชิงตรรกะใน JSON ไม่ใช่ FK ดูขอบเขต browser ใน Architecture และ business flows ใน DFD Level 0
+
 ## users — สมาชิกและ Profile
 
 | Column | PostgreSQL type | Null/default / constraint | หน้าที่ |

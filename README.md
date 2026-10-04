@@ -10,9 +10,11 @@
 
 Login/Register ใช้ข้อความแนะนำแบบ CharacterV1 ที่ปรับให้เคลื่อนที่เบา รองรับภาษาไทยและ reduced motion โดยเลือก scroll/entrance ตามระยะเลื่อนจริง ดู [รายละเอียดและผลตรวจ](docs/TEXT-ANIMATION.md)
 
-UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพาะ actions สำคัญ และ system sans-serif ที่อ่านไทยได้ โดยไม่โหลดฟอนต์ภายนอก: `frontend/src/theme.css` เป็น tokens กลาง และ `frontend/src/styles.css` ดูแล layout/states; Overview เน้น recent owned links และข้อมูลจริงจาก API เดิม, mobile/tablet ใช้ navigation แบบเปิด/ปิดและประวัติแบบรายการ ดูผลตรวจและข้อจำกัดที่ [UI verification](docs/UI-VERIFICATION.md)
+ตัวเลือกภาษาเป็นปุ่มแคปซูลเปิดเมนู English/ไทยที่ใช้สีตาม Dark/Light Mode พร้อมเครื่องหมายภาษาปัจจุบัน ใช้ Enter/Space เปิด, ลูกศรขึ้น/ลงหรือ Home/End เลือก, Enter ยืนยัน, Escape ปิดและคืนโฟกัส; Tab หรือคลิกด้านนอกปิดเมนู ปุ่มนี้ใช้ store เดิม ไม่เพิ่ม API หรือ database column
 
-Daily opens ใน Overview/Analytics และฟอร์ม Create link ใช้พื้นที่กึ่งกลางกว้างสูงสุด 820px ภายใน workspace แถบซ้ายบน desktop ย่อเป็นไอคอนและขยายกลับได้; บนมือถือเป็น drawer ที่ปิดด้วย Escape หรือกดพื้นที่ภายนอกได้ พร้อม focus trap เมนูมี slide/stagger และเปลี่ยนหน้าด้วย entrance สั้น รองรับ `prefers-reduced-motion` โดยไม่เพิ่ม GSAP/Tailwind/shadcn และไม่เปลี่ยน API
+UI ของ Link Studio ใช้ neutral charcoal, off-white, lime เฉพาะ actions สำคัญ, system sans-serif สำหรับ English และ Noto Sans Thai แบบ self-hosted สำหรับไทย โดยไม่เรียกบริการฟอนต์ภายนอก: `frontend/src/theme.css` เป็น tokens กลาง และ `frontend/src/styles.css` ดูแล layout/states; Overview เน้น recent owned links และข้อมูลจริงจาก API เดิม, mobile/tablet ใช้ navigation แบบเปิด/ปิดและประวัติแบบรายการ ดูผลตรวจและข้อจำกัดที่ [UI verification](docs/UI-VERIFICATION.md)
+
+Daily opens ใน Overview/Analytics และฟอร์ม Create link ใช้พื้นที่กึ่งกลางกว้างสูงสุด 820px ภายใน workspace Navigation ใช้แนว Sterling Gate: desktop มีแถบไอคอนซ้าย 76px และปุ่ม Menu เปิดเมนูซ้อนจากซ้ายกว้างสูงสุด 470px; มือถือเปิดจากปุ่มข้างโลโก้ เมนูมีพื้นหลังสามชั้น ชื่อเมนูทยอยเข้ามา และรูปทรงสีตามธีมเมื่อชี้หรือโฟกัส ใช้เมนูจริงทั้งห้าหน้าและ Logout เดิม ปิดด้วย Escape หรือพื้นที่ภายนอก พร้อม focus trap, คืนโฟกัส และล็อกพื้นหลัง เปลี่ยนหน้าด้วย entrance สั้น รองรับ `prefers-reduced-motion` โดยไม่เพิ่ม GSAP/Tailwind/shadcn และไม่เปลี่ยน API
 
 | ข้อกำหนด | Implementation / หลักฐาน |
 |---|---|
@@ -84,7 +86,7 @@ npm run db:migrate
 npm run dev
 ```
 
-เปิด **http://localhost:5173** แล้ว Create account ของตัวเอง. Backend/Short URL ใช้ **http://localhost:3000**; readiness http://localhost:3000/api/health. npm run dev รัน backend และรอ health ก่อนเริ่ม frontendใน terminalเดียว. Stop ด้วย Ctrl+C. หลังเปิดคอมใหม่ หากฐานข้อมูลพร้อมและ env เดิมอยู่ รัน npm run dev ได้เลย. ถ้าพอร์ต5173ถูกใช้ Viteอาจเลือกพอร์ตอื่น ต้องตั้ง AUTH_ORIGIN ให้ตรง origin ที่ใช้งานและ restart backend.
+เปิด **http://localhost:5173** แล้ว Create account ของตัวเอง. Backend/Short URL ใช้ **http://localhost:3000**; readiness http://localhost:3000/api/health. npm run dev รัน backend และรอ health ก่อนเริ่ม frontendใน terminalเดียว. Stop ด้วย Ctrl+C. หลังเปิดคอมใหม่ หากฐานข้อมูลพร้อมและ env เดิมอยู่ รัน npm run dev ได้เลย. Vite ใช้ --strictPort: ถ้าพอร์ต5173ถูกใช้ คำสั่งจะหยุด ให้ปิดโปรเซสที่ใช้พอร์ตหรือเปลี่ยนพอร์ต dev และ AUTH_ORIGIN ให้ตรงกันก่อน restart.
 
 npm run db:migrate เพิ่ม schema001–007 แบบ additive ไม่ reset ข้อมูล; Render startup ก็ migrateก่อนรับrequest; local npm run dev ต้องรัน db:migrate เองเมื่อเปลี่ยน schema. ถ้า migration/health error ตรวจฐานข้อมูลและTLS ก่อนเปิดUI.
 
@@ -122,7 +124,7 @@ Production local: npm run build แล้ว npm start; ตั้ง AUTH_ORIGIN
 
 ### Persistence ที่เพิ่ม
 
-ฐานข้อมูลปัจจุบันมี9ตารางหลังmigration007: 4ตารางหลัก + chat_conversations/chat_messages, qr_codes, csv_exports, preview_events. แชตสำเร็จอ่านต่อ/ลบเฉพาะเจ้าของ; QRเก็บPNGcacheตามShortURL; CSVเก็บข้อมูลการส่งออกไม่เก็บไฟล์; Previewเก็บmetadataGETและสถานะไม่เก็บIP. ทั้งหมดไม่เพิ่ม click_events. ไม่มีประวัติย้อนหลังของกิจกรรมก่อนmigration; ยังไม่มีautomatic retentionสำหรับaudit/cache. Schemaใหม่ยังไม่อยู่บนRenderจนกว่าจะpushและdeploy.
+ฐานข้อมูลปัจจุบันมี9ตารางหลังmigration007: 4ตารางหลัก + chat_conversations/chat_messages, qr_codes, csv_exports, preview_events. แชตสำเร็จอ่านต่อ/ลบเฉพาะเจ้าของ; QRเก็บPNGcacheตามShortURL; CSVเก็บข้อมูลการส่งออกไม่เก็บไฟล์; Previewเก็บmetadataGETและสถานะไม่เก็บIP. ทั้งหมดไม่เพิ่ม click_events. ไม่มีประวัติย้อนหลังของกิจกรรมก่อนmigration; ยังไม่มีautomatic retentionสำหรับaudit/cache. สถานะ schema บน Render ต้องตรวจ migration logs และตารางจริงหลัง deploy; การตรวจ schema ในเอกสารอ้างอิง migrations ของ repository ไม่ใช่การตรวจ production database รอบนี้.
 
 ## เริ่มต้นในเครื่อง
 

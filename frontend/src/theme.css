@@ -93,3 +93,5 @@
   --warning:#815008;
   --success:#386221;
 }
+
+:root { --kinetic-menu-width:470px; --kinetic-motion:560ms cubic-bezier(.65,.01,.05,.99); --kinetic-item-motion:420ms cubic-bezier(.65,.01,.05,.99); --kinetic-stagger:45ms; }

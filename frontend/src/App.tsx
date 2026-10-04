@@ -28,7 +28,6 @@ export function App({ user, onLogout, loggingOut, onUserChange }: {
     const pageLabels = workspacePageLabels;
     const readPage = (): Page => Object.hasOwn(pageLabels, location.hash.slice(1)) ? location.hash.slice(1) as Page : 'overview';
     const [view, setView] = useState<Page>(readPage);
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     useEffect(() => { const changed = () => { setView(readPage()); window.scrollTo({ top: 0 }); }; window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, []);
     function navigate(page: Page) {
         location.hash = page;
@@ -271,8 +270,8 @@ export function App({ user, onLogout, loggingOut, onUserChange }: {
         urlInput.current?.focus(); }, [view]);
     const totalPages = Math.max(1, Math.ceil((links?.total ?? 0) / 6));
     const maxClicks = Math.max(1, ...(stats?.daily.map(d => d.clicks) ?? []));
-    return <div className="app-shell" data-nav-collapsed={sidebarCollapsed}>
-    <WorkspaceNavigation user={user} view={view} totalLinks={stats?.totalLinks} collapsed={sidebarCollapsed} onCollapse={setSidebarCollapsed} onNavigate={navigate} onLogout={onLogout} loggingOut={loggingOut}/>
+    return <div className="app-shell" data-navigation="kinetic">
+    <WorkspaceNavigation user={user} view={view} totalLinks={stats?.totalLinks} onNavigate={navigate} onLogout={onLogout} loggingOut={loggingOut}/>
     <div className="main-wrapper"><div className="workspace-theme-toolbar"><LanguageSelect /><ThemeToggle /></div>
       <main key={view} className={`workspace-content workspace-content--${view}`} tabIndex={-1}>
         <section className="page-heading"><div><h1>{t(pageTitles[view])}</h1><p>{descriptions[view]}</p></div>{view !== 'profile' && view !== 'create' && <InteractiveHoverButton className="button primary heading-button" onClick={focusCreate}><Plus size={17}/>{t("New link")}</InteractiveHoverButton>}</section>

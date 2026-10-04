@@ -35,6 +35,14 @@
 
 React 19 + TypeScript + Vite อยู่ใน `frontend/`; Express 5 + TypeScript + pg อยู่ใน `backend/` เป็น modular monolith หนึ่ง Node service ไม่ใช่ microservices ไม่ใช้ Next.js, Tailwind หรือ shadcn CLI ระบบ styling เป็น CSS tokens (`theme.css`) และ component CSS (`styles.css`); motion ใช้เฉพาะเอฟเฟกต์ข้อความ Auth ที่มีอยู่
 
+## Frontend และค่ากำหนดของ browser
+
+Workspace ใช้ hash routes ห้าหน้า: Overview, Create link, My links, Analytics และ Profile Desktop มีแถบไอคอนซ้าย 76px; ปุ่ม Menu เปิดเมนูซ้อนจากซ้ายกว้างสูงสุด 470px พร้อมพื้นหลังสามชั้น, staggered links และรูปทรงตาม pointer/keyboard focus มือถือใช้ปุ่มข้างโลโก้ เปิดเมนูแล้วล็อกพื้นหลังและเก็บ focus ภายใน; Escape/พื้นที่ภายนอกปิดได้ Daily opens/Create link ใช้พื้นที่กลางสูงสุด 820px และ Profile สูงสุด 900px (single column 640px ที่ความกว้างไม่เกิน 1150px)
+
+ปุ่มภาษา English/ไทย และ Dark/Light Mode อยู่มุมขวาบน รวม Login/Register/Preview LanguageSelect ใช้เมนูตามธีมแทน native dropdown มี checked state, Arrow/Home/End, Escape และคืน focus ค่าภาษา/ธีมเก็บเฉพาะ browser localStorage (`linkstudio.language`, `linkstudio.theme`), sync แท็บ origin เดียวกัน และใช้ memory หาก storage ถูกบล็อก ไม่อยู่ใน users/sessions และไม่ sync ข้ามอุปกรณ์ การสลับภาษาไม่ remount ฟอร์ม ไม่แปลข้อมูลผู้ใช้/ประวัติ AI และไม่เปลี่ยนสัญญา API/CSV ภาษาไทยใช้ self-hosted Noto Sans Thai; reduced motion แสดงเนื้อหาปกติทันที
+
+## การรันระบบ
+
 Production: Render เสิร์ฟ React build, API และ Redirect ด้วย HTTPS origin เดียว ฐานข้อมูล PostgreSQL อยู่บน Supabase เชื่อม Session pooler port 5432 ผ่าน verified TLS ไม่ใช้ Supabase Auth/Storage และไม่เรียก Data API จาก browser รูปโปรไฟล์เก็บ normalized WebP ใน users ไม่ใช้ filesystem uploads จึงอยู่ข้าม redeploy ได้
 
 Development: Vite localhost:5173 proxy `/api` ไป Express ตาม PORT; Short URL ใช้ PUBLIC_BASE_URL (ปกติ localhost:3000) `npm run dev` รอ health พร้อมก่อนเปิด Vite; Render ใช้ `scripts/start-render.mjs` derive origin แล้ว migrate ก่อน start ไม่มี production reset

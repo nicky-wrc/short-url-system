@@ -205,4 +205,5 @@ export const messages: Record<string, string | readonly [string, string]> = {
 "Use 4–32 letters, numbers, hyphens or underscores.":"ใช้ตัวอักษร ตัวเลข ขีดกลาง หรือขีดล่าง 4–32 ตัวอักษร",
 "Tags cannot contain commas or control characters.":"แท็กต้องไม่มี comma หรืออักขระควบคุม",
 "Send either a duration preset or expiresAt, not both.":"เลือกช่วงเวลาหรือวันหมดอายุอย่างใดอย่างหนึ่ง",
+  'Menu':'เมนู', 'Close':'ปิด',
 };
